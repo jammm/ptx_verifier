@@ -1,0 +1,65 @@
+{
+ "backing_allocation": {
+  "base": "0x10000",
+  "bytes": 2304
+ },
+ "enable_pending_ops": [
+  "s_max_i32",
+  "s_getreg_b32",
+  "s_setreg_b32",
+  "s_setreg_imm32_b32",
+  "s_round_mode",
+  "s_denorm_mode"
+ ],
+ "guards": [
+  {
+   "base": "0x10000",
+   "bytes": 256,
+   "fill_u32": "0xffffffff",
+   "name": "pre"
+  },
+  {
+   "base": "0x10500",
+   "bytes": 1024,
+   "fill_u32": "0xffffffff",
+   "name": "post"
+  }
+ ],
+ "kernel": "kernel",
+ "launch_file": {
+  "arrays": [
+   {
+    "base": "0x10100",
+    "elem_width": 4,
+    "kind": "out",
+    "len": 256,
+    "name": "out"
+   }
+  ],
+  "block": [
+   32,
+   1,
+   1
+  ],
+  "grid": [
+   1,
+   1,
+   1
+  ],
+  "kernel": "kernel",
+  "max_instructions": 100000,
+  "params": [
+   {
+    "ptr": "out"
+   }
+  ]
+ },
+ "outputs": {
+  "contract": "raw-u32",
+  "object": "out",
+  "words": 256
+ },
+ "profile": "gfx1250-b0-m2-mode/1",
+ "role": "cand",
+ "schema": "ptxv-m2-request/1"
+}

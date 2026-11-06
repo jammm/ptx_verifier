@@ -153,6 +153,9 @@ pub enum AmdMemoryClass {
     /// Opaque-private-aperture FLAT; both VM and LGKM completion are required.
     FlatPrivateLoad,
     FlatPrivateStore,
+    /// gfx1250 GLOBAL prefetch: X-count address-source lease, no data,
+    /// no destination and no load completion.
+    Prefetch,
 }
 
 /// Encoded S_DELAY_ALU dependency selectors. These refer to prior producer
@@ -186,6 +189,132 @@ impl AmdAluDependency {
     }
 }
 
+/// gfx1250 runtime MODE instruction recorded by the B0 m2 profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdModeOp {
+    /// S_GETREG_B32 of MODE: reads the selected field into an SGPR.
+    Getreg,
+    /// S_SETREG_B32 to MODE from an SGPR.
+    Setreg,
+    /// S_SETREG_IMM32_B32 to MODE from a literal.
+    SetregImm32,
+    /// S_ROUND_MODE: writes MODE[3:0].
+    RoundMode,
+    /// S_DENORM_MODE: writes MODE[7:4].
+    DenormMode,
+}
+
+impl AmdModeOp {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Getreg => "s_getreg_b32",
+            Self::Setreg => "s_setreg_b32",
+            Self::SetregImm32 => "s_setreg_imm32_b32",
+            Self::RoundMode => "s_round_mode",
+            Self::DenormMode => "s_denorm_mode",
+        }
+    }
+    pub const fn writes(self) -> bool {
+        !matches!(self, Self::Getreg)
+    }
+}
+
+/// Encoded gfx12 S_WAIT_ALU (DEPCTR) operand. Every field names an ALU or
+/// VMEM-source dependency counter; none names a memory completion counter.
+/// HOLD_CNT is retained raw because its polarity is not established.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AmdAluWait {
+    pub encoded: u16,
+}
+
+impl AmdAluWait {
+    /// The assembler's encoding when a depctr list leaves a field unspecified.
+    pub const NO_WAIT: u16 = 0xff9f;
+    pub const fn sa_sdst(self) -> u8 {
+        (self.encoded & 1) as u8
+    }
+    pub const fn va_vcc(self) -> u8 {
+        ((self.encoded >> 1) & 1) as u8
+    }
+    pub const fn vm_vsrc(self) -> u8 {
+        ((self.encoded >> 2) & 7) as u8
+    }
+    /// Bits 6:5, which name no field.
+    pub const fn reserved(self) -> u8 {
+        ((self.encoded >> 5) & 3) as u8
+    }
+    pub const fn hold_cnt(self) -> u8 {
+        ((self.encoded >> 7) & 1) as u8
+    }
+    pub const fn va_ssrc(self) -> u8 {
+        ((self.encoded >> 8) & 1) as u8
+    }
+    pub const fn va_sdst(self) -> u8 {
+        ((self.encoded >> 9) & 7) as u8
+    }
+    pub const fn va_vdst(self) -> u8 {
+        ((self.encoded >> 12) & 15) as u8
+    }
+}
+
+/// A configured global byte range. Objects may be accessed by their own
+/// instructions; guards are forbidden even inside the backing allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmdGlobalRegion {
+    pub name: String,
+    pub base: u64,
+    pub size: u64,
+    pub guard: bool,
+}
+
+/// gfx12 cache scope of a GLOBAL prefetch. Scopes wider than the work-group
+/// (SE, device, system) with default temporal hint are speculative: a failed
+/// translation is dropped rather than faulting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdCacheScope {
+    Cu,
+    Se,
+    Device,
+    System,
+}
+
+impl AmdCacheScope {
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "SCOPE_CU" => Self::Cu,
+            "SCOPE_SE" => Self::Se,
+            "SCOPE_DEV" => Self::Device,
+            "SCOPE_SYS" => Self::System,
+            _ => return None,
+        })
+    }
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Cu => "SCOPE_CU",
+            Self::Se => "SCOPE_SE",
+            Self::Device => "SCOPE_DEV",
+            Self::System => "SCOPE_SYS",
+        }
+    }
+    pub const fn speculative_prefetch(self) -> bool {
+        !matches!(self, Self::Cu)
+    }
+}
+
+/// The access kind of an attempted global footprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdGlobalAccess {
+    Load,
+    Store,
+    Prefetch(AmdCacheScope),
+}
+
+/// Abort reason of a global access whose footprint leaves its configured
+/// objects or touches a guard; only an independently validated certificate
+/// turns this abort into a rejection.
+pub const GLOBAL_BOUNDS_ABORT_REASON: &str =
+    "global access footprint leaves configured objects or touches a guard region";
+
 /// Selected gfx1250 wave32 WMMA forms. This is distinct from legacy MFMA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
@@ -197,16 +326,147 @@ pub enum AmdWmmaKind {
     Fp8Bf8_16x16x64,
     Bf8Fp8_16x16x64,
     Bf8Bf8_16x16x64,
+    /// FP8 (E4M3) A and B, K = 128: 16-register A and B tuples.
+    Fp8Fp8_16x16x128,
+    /// Integer 8-bit A and B (signedness from NEG), I32 C and D.
+    Iu8_16x16x64,
+    /// FP8/BF8 mixes, K = 128: 16-register A and B tuples.
+    Fp8Bf8_16x16x128,
+    Bf8Fp8_16x16x128,
+    Bf8Bf8_16x16x128,
+    /// `v_wmma_[scale[16]_]f32_16x16x128_f8f6f4`: A and B formats from the
+    /// format modifiers (scale operands, if any, are recorded separately).
+    F8f6f4_16x16x128 {
+        a: AmdSmallFloat,
+        b: AmdSmallFloat,
+    },
+    /// `v_wmma_[scale[16]_]f32_32x16x128_f4`: FP4 32x128 A (16 registers),
+    /// FP4 128x16 B (8 registers), 32x16 F32 C and D (16 registers).
+    F4_32x16x128,
+    /// 16-bit-output dense WMMA, K = 32: F16 or BF16 inputs, 4-register
+    /// packed D; `Bf16F32` reads an 8-register F32 C.
+    Half16x16x32 {
+        output: AmdWmmaOutput,
+    },
+    /// F16-output FP8/BF8 dense WMMA, K = 64 (8-register A/B) or 128 (16).
+    F16Out8 {
+        a: AmdSmallFloat,
+        b: AmdSmallFloat,
+        k128: bool,
+    },
+    /// SWMMAC: 4:2-sparse packed A (8 registers), B (16 registers), an
+    /// index operand (recorded separately), C read from D.
+    Swmmac {
+        input: AmdSwmmacInput,
+        output: AmdWmmaOutput,
+    },
+}
+
+/// Result formats of the gfx1250 16-bit-output WMMA and SWMMAC forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdWmmaOutput {
+    F32,
+    F16,
+    Bf16,
+    /// F32 C, BF16 result.
+    Bf16F32,
+    I32,
+}
+
+impl AmdWmmaOutput {
+    /// Registers of a 16x16 C/D tile of this format in wave32.
+    pub const fn registers(self) -> usize {
+        match self {
+            Self::F16 | Self::Bf16 => 4,
+            _ => 8,
+        }
+    }
+}
+
+/// Input formats of the gfx1250 SWMMAC forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdSwmmacInput {
+    /// K = 64.
+    F16,
+    /// K = 64.
+    Bf16,
+    /// K = 128.
+    Small { a: AmdSmallFloat, b: AmdSmallFloat },
+    /// K = 128.
+    Iu8,
+}
+
+/// Element formats of the gfx1250 F8F6F4 WMMA forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AmdSmallFloat {
+    /// E4M3
+    Fp8,
+    /// E5M2
+    Bf8,
+    /// E2M3
+    Fp6,
+    /// E3M2
+    Bf6,
+    /// E2M1
+    Fp4,
+}
+
+impl AmdSmallFloat {
+    /// Registers of a 16x128 (or 128x16) matrix of this format in wave32.
+    pub const fn registers(self) -> usize {
+        match self {
+            Self::Fp8 | Self::Bf8 => 16,
+            Self::Fp6 | Self::Bf6 => 12,
+            Self::Fp4 => 8,
+        }
+    }
 }
 
 impl AmdWmmaKind {
     pub const fn destination_registers(self) -> usize {
-        8
+        match self {
+            Self::F4_32x16x128 => 16,
+            Self::Half16x16x32 { .. } | Self::F16Out8 { .. } => 4,
+            // The SWMMAC D (also its C) has the C format: BF16F32 keeps 8.
+            Self::Swmmac { output, .. } => output.registers(),
+            _ => 8,
+        }
     }
+    /// Registers of the C tuple (BF16F32 dense reads an 8-register F32 C).
+    pub const fn accumulator_registers(self) -> usize {
+        match self {
+            Self::Half16x16x32 {
+                output: AmdWmmaOutput::Bf16F32,
+            } => 8,
+            _ => self.destination_registers(),
+        }
+    }
+    /// Registers of each of A and B for the forms whose A and B have the same
+    /// width (every form except F8F6F4 with mixed widths and F4 32x16x128).
     pub const fn input_registers(self) -> usize {
         match self {
             Self::F32_16x16x4 => 2,
+            Self::Fp8Fp8_16x16x128
+            | Self::Fp8Bf8_16x16x128
+            | Self::Bf8Fp8_16x16x128
+            | Self::Bf8Bf8_16x16x128 => 16,
+            Self::F8f6f4_16x16x128 { a, .. } => a.registers(),
+            Self::F4_32x16x128 => 16,
+            Self::F16Out8 { k128: true, .. } => 16,
             _ => 8,
+        }
+    }
+    /// Registers of the A tuple.
+    pub const fn a_registers(self) -> usize {
+        self.input_registers()
+    }
+    /// Registers of the B tuple.
+    pub const fn b_registers(self) -> usize {
+        match self {
+            Self::F8f6f4_16x16x128 { b, .. } => b.registers(),
+            Self::F4_32x16x128 => 8,
+            Self::Swmmac { .. } => 16,
+            _ => self.input_registers(),
         }
     }
 }
@@ -322,6 +582,11 @@ pub enum AmdEventKind {
         destinations: Vec<AmdRegister>,
         sources_ab: Vec<AmdRegister>,
         accumulator: Vec<AmdRegister>,
+        /// Block-scale operand registers of the 4-dword scaled forms (A
+        /// scale, then B scale); empty for every other form.
+        scales: Vec<AmdRegister>,
+        /// SWMMAC sparsity-index operand registers; empty for dense forms.
+        index: Vec<AmdRegister>,
     },
     /// A supported MFMA form, with operand roles retained for forwarding checks.
     MatrixIssue {
@@ -460,6 +725,75 @@ pub enum AmdEventKind {
     LaneWrite {
         lane: u8,
     },
+    /// gfx12 S_WAIT_ALU. It orders only ALU dependency counters and never
+    /// completes a memory, kernarg or replay counter.
+    AluWait {
+        wait: AmdAluWait,
+    },
+    /// Per-lane address footprint of an issued prefetch (one byte per active
+    /// lane). It follows its `MemoryIssue`, carries no data and has no effects.
+    PrefetchFootprint {
+        issue: EventId,
+        scope: AmdCacheScope,
+        lanes: Vec<(u8, u64)>,
+    },
+    /// Attempted global access recorded before issue, with every active lane's
+    /// start address. Execution aborts; nothing is issued or written.
+    GlobalAccessFault {
+        access: AmdGlobalAccess,
+        bytes_per_lane: u8,
+        lanes: Vec<(u8, u64)>,
+    },
+    /// One executed MODE read or write of bits `[offset, offset + width)`,
+    /// with the exact field value read or written. It follows the
+    /// instruction's `Instruction` record and has no register effects of its
+    /// own.
+    ModeAccess {
+        op: AmdModeOp,
+        offset: u8,
+        width: u8,
+        value: u32,
+    },
+    /// B0 litmus profile: the DWORD range check of one issued untyped raw
+    /// buffer access, after the issue's effects. In-range DWORDs have ordinary
+    /// effects; out-of-range DWORDs have none (loads read zero).
+    BufferRangeCheck {
+        issue: EventId,
+        check: AmdBufferRangeCheck,
+    },
+}
+
+/// Descriptor fields and per-lane results of one buffer range check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmdBufferRangeCheck {
+    pub base: u64,
+    pub num_records: u64,
+    /// Stride in bytes after scaling (the profile accepts scale 1 only).
+    pub stride: u64,
+    pub oob_select: bool,
+    pub dwords: u8,
+    pub lanes: Vec<AmdBufferLane>,
+}
+
+/// One active lane: byte `offset` (SGPR + immediate + VGPR, no index) and the
+/// in-range DWORD mask, bit `c` for bytes `[offset + 4c, offset + 4c + 4)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AmdBufferLane {
+    pub lane: u8,
+    pub offset: u64,
+    pub in_range: u8,
+}
+
+impl AmdBufferRangeCheck {
+    /// The documented per-DWORD rule: DWORD `c` is out of range when
+    /// `offset + 4c + 4 > num_records`, or, with OOB_SELECT, `> stride`.
+    pub fn expected_in_range(&self, offset: u64) -> u8 {
+        (0..self.dwords).fold(0, |mask, c| {
+            let end = offset.saturating_add(4 * u64::from(c) + 4);
+            let inside = end <= self.num_records && (!self.oob_select || end <= self.stride);
+            mask | (u8::from(inside) << c)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

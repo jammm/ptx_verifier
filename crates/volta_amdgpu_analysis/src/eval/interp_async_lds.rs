@@ -13,7 +13,12 @@ impl Interpreter<'_> {
         wave: &mut Wave,
         instruction: &Instruction,
     ) -> Result<(), EvalError> {
-        if self.architecture != AmdArchitecture::Gfx1250 || self.xnack_replay_enabled {
+        // Outside the litmus profile only the compiler's B128 GV form runs.
+        if self.architecture != AmdArchitecture::Gfx1250
+            || self.xnack_replay_enabled
+            || instruction.mnemonic() != "global_load_async_to_lds_b128"
+            || !matches!(instruction.operands().get(2), Some(Operand::Off))
+        {
             return Err(self.unsupported(wave, instruction));
         }
         if wave.exec == 0 {

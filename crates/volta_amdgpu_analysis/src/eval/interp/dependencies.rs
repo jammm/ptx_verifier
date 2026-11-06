@@ -263,7 +263,7 @@ impl Interpreter<'_> {
             | MemoryKind::LdsWritePair | MemoryKind::TensorStoreFromLds
             | MemoryKind::BufferStore | MemoryKind::ScratchStore))
             || matches!(instruction.operation(), Operation::Memory(memory) if memory.operation == MemoryOpcode::GlobalAtomicAddF32);
-        let no_destination = matches!(instruction.operation(), Operation::Memory(memory) if matches!(memory.kind, MemoryKind::TensorLoadToLds | MemoryKind::TensorStoreFromLds | MemoryKind::AsyncLoadToLds))
+        let no_destination = matches!(instruction.operation(), Operation::Memory(memory) if matches!(memory.kind, MemoryKind::TensorLoadToLds | MemoryKind::TensorStoreFromLds | MemoryKind::AsyncLoadToLds | MemoryKind::Prefetch))
             || matches!(instruction.operation(), Operation::Memory(memory) if memory.kind == MemoryKind::BufferLoadToLds)
             || (wave.width == 32
                 && matches!(
@@ -326,7 +326,10 @@ impl Interpreter<'_> {
                     | AluOperation::SAddkI32
                     | AluOperation::SBitset1B32
             )
-        ) {
+        ) || (self.architecture == AmdArchitecture::Gfx1250
+            && instruction.mnemonic().starts_with("v_swmmac_"))
+        {
+            // SWMMAC reads its C from the destination registers.
             add(&operands[0], wave.exec, &mut reads);
         }
         if self.architecture == AmdArchitecture::Gfx1250

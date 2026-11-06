@@ -170,6 +170,98 @@ equivalence only. A `.graph` dump is diagnostic text, not an executable replay
 format. Use a recorded run store with `volta viz STORE -o page.html` to browse
 events, target geometry, source links and typed findings.
 
+## Check a gfx1250 B0 program
+
+`check-program` evaluates one gfx1250 m1 integer kernel (an
+fuzzer candidate, twin or calibration control) under profile
+`gfx1250-b0-m1-int/1` and writes a JSON report:
+
+```sh
+volta --backend amdgpu --target gfx1250 --no-log-file check-program \
+  --request cand.request.json --report cand.report.json
+```
+
+The request (`ptxv-m1-request/1`) and report (`ptxv-m1-report/1`) schemas are
+frozen in [tests/gfx1250/m1/schema](../tests/gfx1250/m1/schema). The request
+names the source and its sha256, the echoed object hash, the role (`cand`,
+`twin` or `control`), enabled pending operations, the one-wave launch, the
+`out` object, the backing allocation, a `pre` and a `post` guard and the
+`raw-u32` output contract. Relative paths are resolved against the request's
+directory. Unknown fields or values outside the schema are `ERROR`; a source
+hash mismatch is `ERROR` with reason `SOURCE_HASH_MISMATCH` and no analysis.
+
+The report keeps the parser status and refused operations, execution status,
+seven checks (`trace_completeness`, `wait_readiness`, `barrier_generations`,
+`memory_conflicts`, `object_bounds`, `prefetch_policy`, `store_completion`,
+each with typed witnesses or unresolved reasons), kernarg/store/prefetch memory
+events, every output word as an exact u32 or a null with its reason, the
+modeling assumptions and the verifier identity (version, build revision, dirty
+flag and executable sha256). The report is written atomically and is
+authoritative; the exit status equals its class:
+
+| Class | Exit | Meaning |
+| --- | --- | --- |
+| `PASS` | 0 | Parser and profile supported, complete execution, every check passes, every output word exact |
+| `REJECT` | 1 | A check failed with a certified typed witness |
+| `UNKNOWN_UNSUPPORTED` | 2 | Refused operation or form, parser/layout refusal, aborted execution, unresolved check or partial outputs |
+| `ERROR` | 3 | Invalid request or invocation, unreadable or mismatched source |
+| `TIMEOUT` | 4 | The request's instruction budget was exhausted |
+
+Precedence is REJECT > ERROR > TIMEOUT > UNKNOWN_UNSUPPORTED > PASS. A PASS
+states that the required checks passed under the recorded model and launch
+premises; it is not a claim about other steppings or about device results. See
+the [gfx1250 m1 profile](../tests/gfx1250/CONTRACT.md#m1-integer-profile)
+and its [fixtures](../tests/gfx1250/m1/README.md).
+
+A `ptxv-m2-request/1` request selects the m2 MODE profile
+`gfx1250-b0-m2-mode/1` instead. Its `ptxv-m2-report/1` has the same fields plus
+an eighth check, `mode_order`, and a `mode` record (entry FP_ROUND/FP_DENORM,
+every MODE access with its value, final fields). The schemas are in
+[tests/gfx1250/m2/schema](../tests/gfx1250/m2/schema); see the
+[m2 profile](../tests/gfx1250/CONTRACT.md#m2-mode-profile)
+and its [fixtures](../tests/gfx1250/m2/README.md).
+
+A `ptxv-litmus-request/1` request selects the litmus profile
+`gfx1250-b0-litmus/1` for fuzzer litmus kernels. It names contiguous
+objects (`out`, `data`) with their exact initial words and the static LDS size
+the descriptor must declare; its `ptxv-litmus-report/1` has the seven m1 checks,
+the final object images and a `litmus` record of every buffer range check and
+async LDS copy. The schemas are in
+[tests/gfx1250/litmus/schema](../tests/gfx1250/litmus/schema); see the
+[litmus profile](../tests/gfx1250/CONTRACT.md#litmus-profile) and its
+[fixtures](../tests/gfx1250/litmus/README.md). A `ptxv-litmus-request/2`
+request selects `gfx1250-b0-litmus/2`, which adds the two-wave named-barrier
+JOIN template (`launch_file.block` `[32, 1, 1]` or `[64, 1, 1]`); see
+[litmus/2](../tests/gfx1250/CONTRACT.md#litmus2-named-barrier-join-read-back)
+and its [fixtures](../tests/gfx1250/litmus2/README.md).
+
+`ptxv-wmma-request/1` and `ptxv-mw-request/1` select `gfx1250-b0-wmma/1` (one
+wave with BF16 WMMA) and `gfx1250-b0-mw/1` (2..8 waves: `launch_file.block` is
+`[32*W, 1, 1]`; `outputs` declares the `opaque` and `not_written` word ranges as
+`[first, count]` pairs). Their reports add the ninth check `wmma_hazards`. The
+schemas are in [tests/gfx1250/mw_wmma/schema](../tests/gfx1250/mw_wmma/schema);
+see the [WMMA and multiwave profiles](../tests/gfx1250/CONTRACT.md#wmma-and-multiwave-profiles).
+`ptxv-wmma-request/2` selects `gfx1250-b0-wmma/2` (F16, IU8 and FP8 WMMA and an
+EXEC=0 spacer; schemas in [tests/gfx1250/wmma2/schema](../tests/gfx1250/wmma2/schema));
+see the [WMMA types profile](../tests/gfx1250/CONTRACT.md#wmma-types-profile).
+`ptxv-wmma-request/3` selects `gfx1250-b0-wmma/3` (adds the BF8 combinations,
+F8F6F4, F4 32x16x128 and their block-scaled forms; schemas in
+[tests/gfx1250/wmma3/schema](../tests/gfx1250/wmma3/schema)); see the
+[WMMA scale profile](../tests/gfx1250/CONTRACT.md#wmma-scale-profile).
+`ptxv-wmma-request/4` selects `gfx1250-b0-wmma/4` (adds the 16-bit-output WMMA
+forms and SWMMAC; schemas in [tests/gfx1250/wmma4/schema](../tests/gfx1250/wmma4/schema));
+see the [WMMA 16-bit output and SWMMAC profile](../tests/gfx1250/CONTRACT.md#wmma-16-bit-output-and-swmmac-profile).
+`ptxv-mw-request/2` selects `gfx1250-b0-mw/2` (the multiwave profile with the
+`/4` WMMA forms in any wave; schemas in [tests/gfx1250/mw2/schema](../tests/gfx1250/mw2/schema));
+see the [multiwave WMMA-types profile](../tests/gfx1250/CONTRACT.md#multiwave-wmma-types-profile).
+`ptxv-mwpred-request/1` selects `gfx1250-b0-mwpred/1` (every workgroup of a
+non-communicating grid is analysed and composed; schemas in [tests/gfx1250/mwpred/schema](../tests/gfx1250/mwpred/schema));
+see the [multi-workgroup predecessor profile](../tests/gfx1250/CONTRACT.md#multi-workgroup-predecessor-profile).
+`ptxv-comms-request/1` selects `gfx1250-b0-comms/1` (waves of a workgroup
+exchange data through LDS and GLOBAL memory, ordered by completion waits and
+barriers; grids of isolated workgroups; schemas in [tests/gfx1250/comms/schema](../tests/gfx1250/comms/schema));
+see the [communicating-waves profile](../tests/gfx1250/CONTRACT.md#communicating-waves-profile).
+
 ## Read results and logs
 
 | Operation | Success / failure / inconclusive | Exit codes |
@@ -178,6 +270,7 @@ events, target geometry, source links and typed findings.
 | `verify`, source `compare` | `ACCEPT` / `REJECT` / `UNKNOWN` | 0 / 1 / 2 |
 | Certified readiness, memory-conflict or tensor-bounds finding, any source command | `VERDICT: REJECT` with incomplete prefix | 1 |
 | Expression/VC replay | Equivalence result without a graph verdict | 0 / 1 / 2 |
+| `check-program` | Report class `PASS` / `REJECT` / `UNKNOWN_UNSUPPORTED` / `ERROR` / `TIMEOUT` | 0 / 1 / 2 / 3 / 4 |
 
 A completed trace with passing graph checks is distinct from a proof of output
 equivalence. Unsupported instructions, uninitialized values, budgets and missing

@@ -1,0 +1,209 @@
+{
+  "id": "mw-b0",
+  "version": 1,
+  "superset_of": {
+    "id": "wmma-b0",
+    "version": 1,
+    "allowlist_sha256": "ac0cdb76bc24d8d7c3006f3d9c74fb4e9de96fee6482a2b746ad37ab7d7583c5",
+    "note": "body and pending lists equal; wrapper replaced by the multiwave wrapper"
+  },
+  "family": "multiwave",
+  "target": "gfx1250",
+  "stepping": "B0 (rocminfo ASIC Revision != 0)",
+  "dependency_profile": "gfx1250-b0-sched0-mw/1",
+  "verifier_profile": "gfx1250-b0-mw/1",
+  "body_allowed_ops": [
+    "s_add_co_ci_u32",
+    "s_add_co_u32",
+    "s_and_b32",
+    "s_brev_b32",
+    "s_cselect_b32",
+    "s_lshl_b32",
+    "s_lshr_b32",
+    "s_max_u32",
+    "s_min_i32",
+    "s_min_u32",
+    "s_mov_b32",
+    "s_mul_i32",
+    "s_nop",
+    "s_not_b32",
+    "s_or_b32",
+    "s_sub_co_u32",
+    "s_wait_alu",
+    "s_wait_kmcnt",
+    "s_xor_b32",
+    "v_add_nc_u32",
+    "v_and_b32",
+    "v_bfrev_b32",
+    "v_cmp_eq_u32",
+    "v_cmp_gt_u32",
+    "v_cmp_lt_u32",
+    "v_cmp_ne_u32",
+    "v_cndmask_b32",
+    "v_lshlrev_b32",
+    "v_lshrrev_b32",
+    "v_max_u32",
+    "v_min_u32",
+    "v_mov_b32",
+    "v_mul_lo_u32",
+    "v_nop",
+    "v_not_b32",
+    "v_or_b32",
+    "v_readfirstlane_b32",
+    "v_sub_nc_u32",
+    "v_subrev_nc_u32",
+    "v_wmma_f32_16x16x32_bf16",
+    "v_xor_b32"
+  ],
+  "pending_ops": {
+    "s_max_i32": "enabled only when calibration.json m1_controls.smax_i32_eq_scc1 and m1_controls.smax_i32_gt_scc0 are both PASS on the campaign's device, and config subset.enable_pending_if_calibrated lists it",
+    "s_getreg_b32": "enabled only when every m2_controls entry (C1-C9, candidate and twin form) in the campaign's calibration.json is PASS on the campaign's device, the existing fenced MODE op probe AGREES, and config subset.enable_pending_if_calibrated lists it",
+    "s_setreg_b32": "enabled only when every m2_controls entry (C1-C9, candidate and twin form) in the campaign's calibration.json is PASS on the campaign's device, the existing fenced MODE op probe AGREES, and config subset.enable_pending_if_calibrated lists it",
+    "s_setreg_imm32_b32": "enabled only when every m2_controls entry (C1-C9, candidate and twin form) in the campaign's calibration.json is PASS on the campaign's device, the existing fenced MODE op probe AGREES, and config subset.enable_pending_if_calibrated lists it",
+    "s_round_mode": "enabled only when every m2_controls entry (C1-C9, candidate and twin form) in the campaign's calibration.json is PASS on the campaign's device, the existing fenced MODE op probe AGREES, and config subset.enable_pending_if_calibrated lists it",
+    "s_denorm_mode": "enabled only when every m2_controls entry (C1-C9, candidate and twin form) in the campaign's calibration.json is PASS on the campaign's device, the existing fenced MODE op probe AGREES, and config subset.enable_pending_if_calibrated lists it"
+  },
+  "mode_forms": {
+    "s_getreg_b32": "sD, hwreg(HW_REG_WAVE_MODE, 0|4, 4)",
+    "s_setreg_b32": "hwreg(HW_REG_WAVE_MODE, 0|4, 4), sS",
+    "s_setreg_imm32_b32": "hwreg(HW_REG_WAVE_MODE, 0|4, 4), imm (0 <= imm <= 0xF: immediate limited to the 4-bit field)",
+    "s_round_mode": "imm (0 <= imm <= 0xF)",
+    "s_denorm_mode": "imm (0 <= imm <= 0xF)",
+    "fields": {
+      "round": "MODE[3:0] FP_ROUND",
+      "denorm": "MODE[7:4] FP_DENORM"
+    },
+    "not_supported": "VGPR_MSB, FP16_OVFL, SCALAR_PREFETCH_EN, REPLAY_MODE, FLAT_SCRATCH_IS_NV, DISABLE_PERF, any other hwreg or bit range, hwreg aliases (HW_REG_MODE, numeric ids), s_set_vgpr_msb"
+  },
+  "wait_alu_fields": [
+    "all",
+    "sa_sdst",
+    "va_vdst",
+    "va_sdst",
+    "va_vcc",
+    "va_ssrc",
+    "vm_vsrc"
+  ],
+  "verifier_extra_wait_alu_encodings": {
+    "0xfffe": "literal encoding with only SA_SDST==0; accepted by the verifier, never emitted by the fuzzer"
+  },
+  "required_waits": {
+    "P-GETREG-MODE-THEN-MODE-WRITE": "a MODE write (s_setreg_b32, s_setreg_imm32_b32, s_round_mode, s_denorm_mode) after s_getreg_b32 MODE with no s_wait_alu whose SA_SDST field is 0 (all | sa_sdst) between them is outside the profile (mode_order UNKNOWN); generation inserts that wait"
+  },
+  "seeds": [
+    "seeds/multiwave/mw_split8.json",
+    "seeds/multiwave/mw_lone_victim8.json",
+    "seeds/multiwave/mw_wmma_int8.json"
+  ],
+  "control_programs": {},
+  "action_mask": {
+    "always_false": [],
+    "unchanged_conditions": [
+      "STOP",
+      "INSERT_ALU",
+      "INSERT_DEPENDENT",
+      "INSERT_XUNIT",
+      "INSERT_MODE_READ",
+      "INSERT_MODE_WRITE",
+      "DELETE",
+      "SWAP_ADJACENT",
+      "INSERT_SPACER",
+      "REMOVE_SPACER",
+      "MUTATE_IMM",
+      "RETARGET_SRC",
+      "RETARGET_DST",
+      "DUPLICATE_SPAN"
+    ],
+    "spacer_ops": [
+      "s_wait_alu",
+      "s_nop",
+      "v_nop"
+    ]
+  },
+  "excluded_by_category": {
+    "floating_point_and_trans": [
+      "v_fma_f32",
+      "v_exp_f32",
+      "v_rcp_f32",
+      "v_sqrt_f32",
+      "v_log_f32",
+      "v_exp_f16",
+      "v_rcp_f16",
+      "v_add_f16",
+      "v_mul_f16"
+    ],
+    "memory_in_body": [
+      "ds_load_b32",
+      "s_wait_dscnt"
+    ],
+    "excluded_ops": [
+      "v_perm_pk16*",
+      "scratch-base operands/reads (src_flat_scratch_base_*, HW_REG_*SCRATCH_BASE*)"
+    ],
+    "mode_other_fields_and_forms": [
+      "s_set_vgpr_msb (excluded operation)",
+      "MODE bits outside [7:0]",
+      "hwreg other than HW_REG_WAVE_MODE"
+    ]
+  },
+  "wrapper_forms": [
+    "multiwave.Experiment.raw_lines: m1 prologue; v_readfirstlane_b32 s20, v0; s_lshr_b32 s20, s20, 5; s_barrier_signal -1; s_barrier_wait -1; evidence reads; role mask s24/s25; s_cmp_eq_u32 s25, 1; s_cbranch_scc1 .Laggressor; victim body + stores; s_branch .Ldone; aggressor body + stores; .Ldone: evidence read; s_wait_alu 0x0; v_mov_b32 v10..v13, v1; global_store_b128 v1, v[10:13], s[2:3] offset:4*evidence_base; s_endpgm"
+  ],
+  "control_only_ops": {},
+  "wrapper_mnemonics": [
+    "global_prefetch_b8",
+    "global_store_b128",
+    "global_store_b32",
+    "s_and_b32",
+    "s_barrier_signal",
+    "s_barrier_wait",
+    "s_branch",
+    "s_cbranch_scc1",
+    "s_cmp_eq_u32",
+    "s_endpgm",
+    "s_get_shader_cycles_u64",
+    "s_load_b64",
+    "s_lshl_b32",
+    "s_lshr_b32",
+    "s_mov_b32",
+    "s_mov_b64",
+    "s_wait_alu",
+    "s_wait_kmcnt",
+    "v_and_b32",
+    "v_lshlrev_b32",
+    "v_mov_b32",
+    "v_nop",
+    "v_readfirstlane_b32"
+  ],
+  "allowlist_canonical": "sha256 of json.dumps({'body','pending','wrapper','control_only'} sorted lists, separators=(',',':'), sort_keys=True)",
+  "allowlist_sha256": "24c48dd6ea5f5e503a0f46c079949447ffc7e5665bfa5c9fe35157859138f31a",
+  "wmma": {
+    "ops": [
+      "v_wmma_f32_16x16x32_bf16"
+    ],
+    "operand_form": "v_wmma_f32_16x16x32_bf16 v[D:D+7], v[A:A+7], v[B:B+7], v[C:C+7] (fuzzer tiles: A/B in v40, v48; C/D in v56, v64, v72); no modifiers",
+    "output_contract": "A-WMMA-EXACT-REGIME: D element bits only when inputs are normal or zero and every partial sum is an exactly representable normal binary32 value (terms multiples of q >= 2^-126, sum of magnitudes < 2^24 q, D != 0); otherwise FLOATING_POINT_DERIVED (UNKNOWN)",
+    "hazards": {
+      "W1": "D -> next WMMA A/B: 5 slots (REJECT)",
+      "W2": "D -> VALU RAW/WAW, A/B/C <- VALU WAR: 4 slots (REJECT)",
+      "W3": "D -> next WMMA C, XDL WAW/WAR (unlisted): 5 slots by conservative policy (UNKNOWN below)",
+      "W4": "same-operand WMMA back-to-back without an intervening VALU/V_NOP (REJECT)",
+      "W5": "slot = v_nop or a vector-ALU instruction touching none of the earlier WMMA registers; TRANS/WMMA do not count"
+    },
+    "gate": "v_wmma_f32_16x16x32_bf16 stays in the campaign grammar only if the calibration WMMA op probe AGREES (not in calibration.json unmodeled_ops)",
+    "predecessor": "none recorded (no predecessor kernel in this profile; launch contract predecessor_kernel null, assumption A-NO-PREDECESSOR)"
+  },
+  "evidence_forms": {
+    "s_getreg_b32 s21, hwreg(HW_REG_WAVE_HW_ID1)": "whole HW_ID1, opaque (OPAQUE words); not a MODE access, never pending",
+    "s_get_shader_cycles_u64 s[22:23] / s[26:27]": "opaque (OPAQUE words)"
+  },
+  "multiwave": {
+    "waves": "2..8, one workgroup, block 32*W",
+    "roles": "at least one 'A' and one 'V'",
+    "victims": "victim bodies under the same body allowlist (FP/TRANS/f16 victims stay outside: fma_bystander, trans_stale, f16_halves)",
+    "mode_ops": "pending; multiwave calibration (calibrate-family) carries no ALU MODE op probes, so MODE ops stay disabled in verified multiwave campaigns unless a later change links them",
+    "output_contract": "raw-u32-mw: slot k of wave w lane l at word k*32W + 32w + l (exact; NOT_WRITTEN beyond the wave program slot count and for twin aggressors); evidence [HW_ID1, cycles start lo, cycles end lo, wave index] per wave: index exact, the other three OPAQUE",
+    "replay_mode": "single-group (wave-start REPLAY_MODE 0)",
+    "same_address_store_lanes": "ordered by lane (evidence store data is wave-uniform)"
+  }
+}

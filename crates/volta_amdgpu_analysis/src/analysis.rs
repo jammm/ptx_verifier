@@ -1,7 +1,10 @@
 //! Candidate execution and the two existing downstream artifacts, without verdicts.
 use crate::{
     config::AnalysisConfig,
-    eval::{EvalError, InstructionObserver, Interpreter, OutputsUnavailable, RunArtifacts, Stats},
+    eval::{
+        EvalError, InstructionObserver, Interpreter, OutputsUnavailable, RawOutputs, RunArtifacts,
+        Stats,
+    },
     frontend::Module,
     lower::{LowerError, lower_kernel_in_module},
 };
@@ -30,6 +33,7 @@ impl Error for AnalysisError {}
 pub struct AnalysisResult {
     symbolic: SymbolicOutputs,
     outputs: Result<(), OutputsUnavailable>,
+    raw_outputs: Option<RawOutputs>,
     pub graph: EventGraph,
     pub stats: Stats,
     pub op_counts: BTreeMap<&'static str, u64>,
@@ -46,6 +50,7 @@ impl AnalysisResult {
                 outputs,
             },
             outputs: status,
+            raw_outputs: run.raw_outputs,
             graph: run.graph,
             stats: run.stats,
             op_counts: run.op_counts,
@@ -53,6 +58,10 @@ impl AnalysisResult {
     }
     pub fn symbolic_outputs(&self) -> Result<&SymbolicOutputs, &OutputsUnavailable> {
         self.outputs.as_ref().map(|()| &self.symbolic)
+    }
+    /// Every output word under the raw-u32 contract after completed execution.
+    pub fn raw_outputs(&self) -> Option<&RawOutputs> {
+        self.raw_outputs.as_ref()
     }
     pub fn arena(&self) -> &ExprArena {
         &self.symbolic.arena
@@ -63,6 +72,7 @@ impl AnalysisResult {
     pub fn into_parts(self) -> AnalysisParts {
         AnalysisParts {
             outputs: self.outputs.map(|()| self.symbolic),
+            raw_outputs: self.raw_outputs,
             graph: self.graph,
             stats: self.stats,
             op_counts: self.op_counts,
@@ -72,6 +82,7 @@ impl AnalysisResult {
 #[derive(Debug)]
 pub struct AnalysisParts {
     pub outputs: Result<SymbolicOutputs, OutputsUnavailable>,
+    pub raw_outputs: Option<RawOutputs>,
     pub graph: EventGraph,
     pub stats: Stats,
     pub op_counts: BTreeMap<&'static str, u64>,
@@ -200,7 +211,10 @@ fn analyze_internal(
                     "flat memory"
                 } else if instruction.mnemonic().starts_with("tensor_") {
                     "tensor memory"
-                } else if instruction.mnemonic() == "global_load_async_to_lds_b128" {
+                } else if instruction
+                    .mnemonic()
+                    .starts_with("global_load_async_to_lds_")
+                {
                     "async memory"
                 } else if instruction.mnemonic() == "v_nop" {
                     "vector ALU"
@@ -213,6 +227,10 @@ fn analyze_internal(
                             == Some(crate::target::Architecture::Gfx1250))
                 {
                     "xcnt drain"
+                } else if instruction.mnemonic() == "global_prefetch_b8" {
+                    "prefetch"
+                } else if instruction.mnemonic() == "s_wait_alu" {
+                    "alu wait"
                 } else if instruction.mnemonic() == "s_delay_alu" {
                     "s_delay_alu"
                 } else if instruction.mnemonic() == "s_barrier_signal" {

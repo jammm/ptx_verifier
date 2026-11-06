@@ -15,6 +15,7 @@ Shared launch, source, specification and output helpers remain separate.
 | `volta solve <file> --spec SPEC --dim N=..` | canonical output checking, with graph checks when recorded | 0 / 1 / 2 |
 | `volta extract lean <file> --spec SPEC -o challenge.lean` | applicable graph gates, then mathematical obligations for Lean | 0 / 1 |
 | `volta viz <store> -o page.html` | the `volta_viz` page over a run store | |
+| `volta check-program --request R --report P` | one gfx1250 kernel under the B0 profile its request names (`src/commands/check_program.rs`): validates the frozen request, checks the source hash, applies the profile, executes and writes the matching report atomically | 0 PASS / 1 REJECT / 2 UNKNOWN_UNSUPPORTED / 3 ERROR / 4 TIMEOUT |
 
 ## Flow of a command
 
@@ -105,3 +106,35 @@ Registering a workload or replaying its expressions does not establish graph
 safety; analysis must complete and the applicable graph checks must pass.
 
 Graph-check witnesses include the source instruction when a source span is available.
+
+`check-program` is the machine interface for fuzzer m1 kernels.
+Its report, not printed text, is authoritative; the exit status equals the
+report class. The build script embeds `git rev-parse HEAD` and a dirty flag
+(`unknown` outside a checkout) and the report adds the executable's sha256,
+computed by the in-tree `sha256.rs`. See [usage](../../docs/usage.md#check-a-gfx1250-b0-program)
+and the [fixtures](../../tests/gfx1250/m1/README.md). A `ptxv-m2-request/1`
+selects the m2 MODE profile `gfx1250-b0-m2-mode/1` and gets a
+`ptxv-m2-report/1` with the `mode_order` check
+([fixtures](../../tests/gfx1250/m2/README.md)). A `ptxv-litmus-request/1`
+selects the litmus profile `gfx1250-b0-litmus/1` for fuzzer litmus
+kernels and gets a `ptxv-litmus-report/1` with object images and every buffer
+range check ([fixtures](../../tests/gfx1250/litmus/README.md));
+`ptxv-litmus-request/2` selects `gfx1250-b0-litmus/2`, which adds the two-wave
+named-barrier JOIN template ([fixtures](../../tests/gfx1250/litmus2/README.md)). A
+`ptxv-wmma-request/1` or `ptxv-mw-request/1` selects `gfx1250-b0-wmma/1` or
+`gfx1250-b0-mw/1` (fuzzer WMMA bodies and multiwave experiments) and gets
+the m2 report plus the `wmma_hazards` check
+([fixtures](../../tests/gfx1250/mw_wmma/README.md)); `ptxv-wmma-request/2`
+selects `gfx1250-b0-wmma/2` (F16, IU8 and FP8 WMMA, EXEC=0 spacers;
+[fixtures](../../tests/gfx1250/wmma2/README.md)); `ptxv-wmma-request/3` selects
+`gfx1250-b0-wmma/3` (adds BF8 combinations, F8F6F4, F4 32x16x128 and the
+block-scaled forms; [fixtures](../../tests/gfx1250/wmma3/README.md));
+`ptxv-wmma-request/4` selects `gfx1250-b0-wmma/4` (adds the 16-bit-output WMMA
+forms and SWMMAC; [fixtures](../../tests/gfx1250/wmma4/README.md));
+`ptxv-mw-request/2` selects `gfx1250-b0-mw/2` (the multiwave profile with the
+`/4` WMMA forms in any wave; [fixtures](../../tests/gfx1250/mw2/README.md));
+`ptxv-mwpred-request/1` selects `gfx1250-b0-mwpred/1` (every workgroup of a
+non-communicating grid; [fixtures](../../tests/gfx1250/mwpred/README.md));
+`ptxv-comms-request/1` selects `gfx1250-b0-comms/1` (waves of a workgroup
+communicating through LDS and GLOBAL memory, and grids of isolated workgroups;
+[fixtures](../../tests/gfx1250/comms/README.md)).

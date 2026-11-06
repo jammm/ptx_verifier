@@ -139,12 +139,12 @@
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "conflicting_count_updates_need_order_but_equal_updates_are_commutative",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "equal_explicit_count_updates_still_require_order_against_other_wave_drops",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ]
     },
@@ -198,12 +198,12 @@
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "conflicting_count_updates_need_order_but_equal_updates_are_commutative",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "equal_explicit_count_updates_still_require_order_against_other_wave_drops",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ]
     },
@@ -257,12 +257,12 @@
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "conflicting_count_updates_need_order_but_equal_updates_are_commutative",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "equal_explicit_count_updates_still_require_order_against_other_wave_drops",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ]
     },
@@ -286,12 +286,12 @@
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "named_initialization_without_crosswave_execution_order_is_a_typed_violation",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "named_reinitialization_cannot_erase_an_earlier_phase_violation",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_protocol_lifetime_tests.rs",
@@ -359,12 +359,12 @@
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "named_initialization_without_crosswave_execution_order_is_a_typed_violation",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "named_reinitialization_cannot_erase_an_earlier_phase_violation",
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_protocol_lifetime_tests.rs",

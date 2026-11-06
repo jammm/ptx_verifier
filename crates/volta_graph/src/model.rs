@@ -609,6 +609,34 @@ pub enum Assumption {
     FixedPrivateAllocation(u32),
     /// Only shared-memory (LDS) accesses are recorded: global memory is not checked.
     SharedMemoryOnly,
+    /// gfx1250 B0 m1 integer profile and its SCHED_MODE 0 dependency
+    /// profile: S_MAX SCC is strict greater-than, as measured on hardware (the guide prints >=).
+    Gfx1250B0M1Profile,
+    /// gfx1250 B0 m2 MODE profile: MODE FP_ROUND/FP_DENORM state
+    /// starts from the kernel descriptor and is changed only by the selected
+    /// MODE instructions; no ALU result in the profile depends on MODE.
+    Gfx1250B0M2ModeProfile,
+    /// Global objects and forbidden guard regions are supplied by configuration.
+    ConfiguredGlobalRegionLayout,
+    /// gfx1250 B0 litmus profile: untyped raw-buffer accesses are range checked
+    /// per DWORD against the documented rule, and configured objects start
+    /// with caller-supplied exact words.
+    Gfx1250B0LitmusProfile,
+    /// gfx1250 B0 litmus/2 profile: a STATE_PRIV read returns only the named
+    /// barrier ID and a clear completion bit, and lanes of one global store
+    /// that write the same bytes are ordered by lane.
+    Gfx1250B0LitmusBarrierProfile,
+    /// gfx1250 B0 WMMA profile: a BF16 WMMA result element has exact bits
+    /// only when every partial sum of its terms is exactly representable.
+    Gfx1250B0WmmaProfile,
+    /// gfx1250 B0 multiwave profile: XNACK replay in single-group mode (the
+    /// wave-start mode), lane-ordered same-address global stores and opaque
+    /// per-wave evidence reads.
+    Gfx1250B0MultiwaveProfile,
+    /// gfx1250 B0 communicating-waves profile: every wave of the selected
+    /// workgroup shares one workgroup-coherent vector cache, so an ordered
+    /// cross-wave GLOBAL conflict is visible at any memory scope.
+    Gfx1250B0WorkgroupCoherentProfile,
 }
 
 impl Assumption {
@@ -616,6 +644,30 @@ impl Assumption {
         match self {
             Assumption::FixedPrivateAllocation(_) => {
                 "the dispatch supplies the declared fixed private allocation for each physical work item; descriptor and metadata agree"
+            }
+            Assumption::Gfx1250B0M1Profile => {
+                "gfx1250 B0 m1 integer profile (SCHED_MODE 0, strict-greater S_MAX SCC); other steppings and targets are outside this result"
+            }
+            Assumption::Gfx1250B0M2ModeProfile => {
+                "gfx1250 B0 m2 MODE profile: entry FP_ROUND/FP_DENORM come from the kernel descriptor, only the selected MODE instructions change them, and no modeled ALU result depends on MODE"
+            }
+            Assumption::Gfx1250B0LitmusProfile => {
+                "gfx1250 B0 litmus profile: untyped raw-buffer DWORDs are range checked by the documented rule (out-of-range loads read zero, stores write nothing); initial object words are launch premises"
+            }
+            Assumption::Gfx1250B0LitmusBarrierProfile => {
+                "gfx1250 B0 litmus/2 profile: a STATE_PRIV read after S_WAIT_IDLE defines only NAMED_BARRIER_ID and a clear NAMED_BARRIER_COMPLETE, read only when the wave has consumed every completion of its joined barrier; a JOIN with an unconsumed completion is outside the profile; lanes of one global store that write the same bytes are ordered by lane"
+            }
+            Assumption::Gfx1250B0WmmaProfile => {
+                "gfx1250 B0 WMMA profile: a BF16 WMMA result element is reported as exact binary32 bits only when its inputs are normal or zero and every partial sum of its terms, in any order, is an exactly representable normal binary32 value; other results stay mathematical reals without bits"
+            }
+            Assumption::Gfx1250B0MultiwaveProfile => {
+                "gfx1250 B0 multiwave profile: every wave stays in the wave-start single-group XNACK replay mode (the first non-memory instruction after memory instructions waits for XCNT to drain), lanes of one global store that write the same bytes are ordered by lane, and shader-cycle and HW_ID1 reads are opaque"
+            }
+            Assumption::Gfx1250B0WorkgroupCoherentProfile => {
+                "gfx1250 B0 communicating-waves profile: the waves of the selected workgroup share one vector-memory cache that is coherent at workgroup scope, so a GLOBAL store completed (STOREcnt) before a barrier is visible to a later GLOBAL load of another wave of the workgroup at any scope; nothing is claimed across workgroups"
+            }
+            Assumption::ConfiguredGlobalRegionLayout => {
+                "global object and guard-region boundaries are caller-supplied launch premises"
             }
             Assumption::AmdDefaultScheduling => {
                 "native AMD execution uses default scheduling; expert scheduling and mode transitions are outside this result"

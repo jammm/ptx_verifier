@@ -21,12 +21,12 @@
     "g:wmma_ab_hazards_and_accumulator_forwarding_use_different_rules": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "wmma_ab_hazards_and_accumulator_forwarding_use_different_rules",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:wmma_coexecution_counts_intervening_valu_instructions_with_target_specific_windows": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "wmma_coexecution_counts_intervening_valu_instructions_with_target_specific_windows",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "d:deallocation_cannot_enable_other_messages_scratch_or_post_release_register_use": {
       "path": "crates/volta_amdgpu_analysis/tests/gfx1250_deallocation.rs",
@@ -36,7 +36,7 @@
     "g:tensor_buffer_borrow_and_completion_are_separate_from_other_wait_classes": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "tensor_buffer_borrow_and_completion_are_separate_from_other_wait_classes",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "c:all_32_lane_ids_return_through_the_real_lds_dependency_and_no_tail_is_written": {
       "path": "crates/volta_pipeline/tests/gfx1250_portable_copy_tests.rs",
@@ -51,7 +51,7 @@
     "g:split_barrier_publishes_only_completed_effects_and_needs_all_live_waves": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "split_barrier_publishes_only_completed_effects_and_needs_all_live_waves",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "e:native_encoding_suffixes_and_workgroup_premises_do_not_cross_generations": {
       "path": "crates/volta_amdgpu_analysis/tests/gfx1250_execution.rs",
@@ -61,12 +61,12 @@
     "g:a_logical_grid_retains_its_geometry_without_certifying_other_workgroups": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:empty_incomplete_and_replay_disabled_envelopes_never_accept": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "empty_incomplete_and_replay_disabled_envelopes_never_accept",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "a:ordinary_grid_group_and_block_fields_retain_all_nine_native_values": {
       "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -96,7 +96,7 @@
     "g:named_reinitialization_creates_a_fresh_lifetime_and_stale_records_fail": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "named_reinitialization_creates_a_fresh_lifetime_and_stale_records_fail",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "l:consumer_only_wait_cannot_replace_actual_lds_completion": {
       "path": "crates/volta_pipeline/tests/gfx1250_named_lifecycle_tests.rs",
@@ -106,12 +106,12 @@
     "g:named_publication_needs_the_actual_data_wait_and_matching_object_phase": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "named_publication_needs_the_actual_data_wait_and_matching_object_phase",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:replay_lease_blocks_source_overwrite_but_xcnt_wait_does_not_complete_data": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "replay_lease_blocks_source_overwrite_but_xcnt_wait_does_not_complete_data",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "e:typed_modules_cannot_retarget_native_scalar_and_vopd_semantics_to_cdna": {
       "path": "crates/volta_amdgpu_analysis/tests/gfx1250_execution.rs",
@@ -121,7 +121,7 @@
     "g:malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "m:real_gfx1250_f32_f16_bf16_wmma_match_every_independent_dot_product": {
       "path": "crates/volta_pipeline/tests/gfx1250_compiler_tests.rs",
@@ -136,17 +136,17 @@
     "g:invalid_masks_register_namespaces_and_missing_semantic_records_fail_closed": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "invalid_masks_register_namespaces_and_missing_semantic_records_fail_closed",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:named_init_resource_and_m0_roles_cannot_be_fabricated": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "named_init_resource_and_m0_roles_cannot_be_fabricated",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:named_arrival_count_is_not_a_distinct_wave_count": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "named_arrival_count_is_not_a_distinct_wave_count",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "f:scope_modifier_does_not_escape_into_legacy_flat_mnemonics_or_unknown_target_features": {
       "path": "crates/volta_pipeline/tests/gfx1250_native_flat_tests.rs",
@@ -156,12 +156,12 @@
     "g:maximal_wait_threshold_never_retires_a_logically_overfull_stream": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "maximal_wait_threshold_never_retires_a_logically_overfull_stream",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "g:malformed_thresholds_and_unknown_tensor_width_do_not_establish_acceptance": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "malformed_thresholds_and_unknown_tensor_width_do_not_establish_acceptance",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "l:completed_single_arrival_preserves_the_only_marker_one": {
       "path": "crates/volta_pipeline/tests/gfx1250_named_lifecycle_tests.rs",
@@ -171,7 +171,7 @@
     "g:separate_data_counters_and_thresholds_control_register_readiness": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "separate_data_counters_and_thresholds_control_register_readiness",
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "m:real_gfx1250_two_wave_two_stage_gemm_preserves_all_512_outputs_and_k64": {
       "path": "crates/volta_pipeline/tests/gfx1250_compiler_tests.rs",
@@ -271,31 +271,31 @@
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
       "line": 1698,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:system_scope_does_not_expand_the_selected_workgroup_contract": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
       "line": 1797,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:system_scope_cannot_certify_scalar_or_resolved_shared_effects": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
       "line": 1769,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
       "line": 1636,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:a_logical_grid_retains_its_geometry_without_certifying_other_workgroups": {
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
       "line": 520,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:ordinary_grid_group_and_block_fields_retain_all_nine_native_values": {
       "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -325,7 +325,7 @@
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
       "line": 1363,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:assembler_legal_unmodeled_matrix_b_reuse_never_becomes_a_default_wmma": {
       "path": "crates/volta_pipeline/tests/gfx1250_matrix_numeric_parity.rs",
@@ -349,7 +349,7 @@
       "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
       "function": "named_arrival_count_is_not_a_distinct_wave_count",
       "line": 2907,
-      "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+      "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
     },
     "review:reinitializing_an_object_with_live_joins_stays_explicitly_unsupported": {
       "path": "crates/volta_pipeline/tests/gfx1250_protocol_lifetime_tests.rs",
@@ -657,7 +657,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -701,7 +701,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -745,7 +745,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -789,7 +789,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -1001,7 +1001,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -1045,7 +1045,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "a_logical_grid_retains_its_geometry_without_certifying_other_workgroups",
           "line": 520,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_portable_abi_tests.rs",
@@ -1301,25 +1301,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "These original rows assert rejected PTX scope/alias/proxy spelling, with no successful mathematical payload. Native completion, source retention and visibility remain separate obligations. The exact supported native SYS endpoint/completion/publication controls and forbidden legacy cache/proxy substitutions are tested; no broader cluster, proxy-alias or cross-agent certificate is synthesized.",
@@ -1351,25 +1351,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "These original rows assert rejected PTX scope/alias/proxy spelling, with no successful mathematical payload. Native completion, source retention and visibility remain separate obligations. The exact supported native SYS endpoint/completion/publication controls and forbidden legacy cache/proxy substitutions are tested; no broader cluster, proxy-alias or cross-agent certificate is synthesized.",
@@ -1401,25 +1401,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "These original rows assert rejected PTX scope/alias/proxy spelling, with no successful mathematical payload. Native completion, source retention and visibility remain separate obligations. The exact supported native SYS endpoint/completion/publication controls and forbidden legacy cache/proxy substitutions are tested; no broader cluster, proxy-alias or cross-agent certificate is synthesized.",
@@ -1451,25 +1451,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "These original rows assert rejected PTX scope/alias/proxy spelling, with no successful mathematical payload. Native completion, source retention and visibility remain separate obligations. The exact supported native SYS endpoint/completion/publication controls and forbidden legacy cache/proxy substitutions are tested; no broader cluster, proxy-alias or cross-agent certificate is synthesized.",
@@ -1609,7 +1609,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1665,7 +1665,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1721,7 +1721,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1777,7 +1777,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1833,7 +1833,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1889,7 +1889,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -1945,7 +1945,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2001,7 +2001,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2057,7 +2057,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2113,7 +2113,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2169,7 +2169,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2225,7 +2225,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2281,7 +2281,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2337,7 +2337,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2393,7 +2393,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2449,7 +2449,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2505,7 +2505,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2561,7 +2561,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown",
           "line": 1363,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_pipeline/tests/gfx1250_matrix_publication.rs",
@@ -2841,7 +2841,7 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "named_arrival_count_is_not_a_distinct_wave_count",
           "line": 2907,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "The baseline rejects an explicit PTX arrive count0. Native M0 expected-count field0 leaves the expected count unchanged and still performs one arrival, so rejecting that no-update signal would contradict the actual target contract. Genuine named_two_arrivals_one_wave and NULL controls remain successful; graph count-vs-wave checks preserve two arrivals from one wave. INIT count0 and field-boundary controls are separately implemented in the13-row mechanism-lifetime contract. This row excludes only PTX count syntax, not native progress/count correctness.",
@@ -3179,25 +3179,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "The original successful kernel contains only the valid membar and termination, has no memory accesses and asserts exactly an empty golden output. Genuine native control_wait completes with a Verified graph and exactly empty outputs. It is only a lowering/progress counterpart. Actual cross-wave GLOBAL or resolved-global FLAT write dependencies separately require explicit SCOPE_SYS at both endpoints, actual completion and publication; missing scope is Unknown and missing completion/publication fails. No whole-device or cross-workgroup fence claim follows from the empty positive.",
@@ -3240,25 +3240,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "The original successful kernel contains only the valid membar and termination, has no memory accesses and asserts exactly an empty golden output. Genuine native control_wait completes with a Verified graph and exactly empty outputs. It is only a lowering/progress counterpart. Actual cross-wave GLOBAL or resolved-global FLAT write dependencies separately require explicit SCOPE_SYS at both endpoints, actual completion and publication; missing scope is Unknown and missing completion/publication fails. No whole-device or cross-workgroup fence claim follows from the empty positive.",
@@ -3301,25 +3301,25 @@
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_visibility_requires_both_endpoints_completion_and_publication",
           "line": 1698,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_does_not_expand_the_selected_workgroup_contract",
           "line": 1797,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "system_scope_cannot_certify_scalar_or_resolved_shared_effects",
           "line": 1769,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         },
         {
           "path": "crates/volta_graph_check/tests/gfx1250_tests.rs",
           "function": "legacy_cache_scope_and_unpaired_async_lane_effects_cannot_forge_publication",
           "line": 1636,
-          "source_sha256": "79d574e1a99a53515a9c7a4ca8292b9470804d48fac582d030eb566f8b03e46c"
+          "source_sha256": "9d087bbc4b965030ea6f5473e36892bb7e149d9adf662d3b099bb4c0a21ff7a3"
         }
       ],
       "current_adjudication": "The original successful kernel contains only the valid membar and termination, has no memory accesses and asserts exactly an empty golden output. Genuine native control_wait completes with a Verified graph and exactly empty outputs. It is only a lowering/progress counterpart. Actual cross-wave GLOBAL or resolved-global FLAT write dependencies separately require explicit SCOPE_SYS at both endpoints, actual completion and publication; missing scope is Unknown and missing completion/publication fails. No whole-device or cross-workgroup fence claim follows from the empty positive.",

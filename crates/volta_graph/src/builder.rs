@@ -25,6 +25,7 @@ impl GraphBuilder {
                 amd_events: Vec::new(),
                 amd_memory_effects: Vec::new(),
                 shared_allocation_layout: Vec::new(),
+                global_region_layout: Vec::new(),
                 provenance,
                 events: IdVec::new(),
                 accesses: IdVec::new(),
@@ -66,6 +67,14 @@ impl GraphBuilder {
             self.assume(crate::Assumption::ConfiguredSharedAllocationLayout);
         }
         self.graph.shared_allocation_layout = layout;
+    }
+
+    /// Preserve configured global objects and guard regions as provenance.
+    pub fn set_global_region_layout(&mut self, layout: Vec<crate::AmdGlobalRegion>) {
+        if !layout.is_empty() {
+            self.assume(crate::Assumption::ConfiguredGlobalRegionLayout);
+        }
+        self.graph.global_region_layout = layout;
     }
 
     /// Record a scalar-issued wave event in the program order of the wave's first lane.

@@ -276,7 +276,22 @@ impl Interpreter<'_> {
         };
         let o = memory.operands();
         if memory.kind == MemoryKind::AsyncLoadToLds {
-            return self.async_load_to_lds(wave, instruction);
+            return if self.litmus_profile() {
+                self.litmus_async_load_to_lds(wave, instruction)
+            } else {
+                self.async_load_to_lds(wave, instruction)
+            };
+        }
+        if self.litmus_profile()
+            && matches!(
+                memory.kind,
+                MemoryKind::BufferLoad | MemoryKind::BufferStore
+            )
+        {
+            return self.litmus_buffer(wave, instruction);
+        }
+        if memory.kind == MemoryKind::Prefetch {
+            return self.prefetch(wave, instruction);
         }
         if memory.kind == MemoryKind::BufferLoadToLds {
             return self.buffer_load_to_lds(wave, instruction);
@@ -617,6 +632,37 @@ impl Interpreter<'_> {
         } else {
             Vec::new()
         };
+        if self.bounded_profile()
+            && buffer_addresses.is_none()
+            && let MemoryAddress::Global { vector, scalar } = memory.address()
+            && matches!(
+                memory.kind,
+                MemoryKind::GlobalLoad | MemoryKind::GlobalStore
+            )
+        {
+            let scale = if instruction
+                .modifiers()
+                .iter()
+                .any(|modifier| modifier.name == "scale_offset")
+            {
+                width * registers as u64
+            } else {
+                1
+            };
+            let lanes = wave
+                .active()
+                .map(|lane| {
+                    self.global_memory_address(wave, vector, Some(scalar), lane, offset, scale)
+                        .map(|address| (lane, address))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let access = if store {
+                AmdGlobalAccess::Store
+            } else {
+                AmdGlobalAccess::Load
+            };
+            self.precheck_global_footprint(wave, access, width * u64::from(registers), lanes)?;
+        }
         let issue = self.builder.amd_event(
             wave.id,
             ProgramPoint(wave.pc as u32),

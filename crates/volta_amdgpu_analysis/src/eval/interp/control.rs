@@ -251,6 +251,27 @@ impl Interpreter<'_> {
                     ],
                 }
             }
+            WaitInstruction::Alu(wait) if self.architecture == AmdArchitecture::Gfx1250 => {
+                AmdEventKind::AluWait { wait: *wait }
+            }
+            // ALU dependency counters are hardware-interlocked under SCHED_MODE
+            // 0, so the memory counters carry the whole S_WAIT_IDLE effect.
+            WaitInstruction::Idle if self.architecture == AmdArchitecture::Gfx1250 => {
+                AmdEventKind::WaitCounters {
+                    thresholds: [
+                        AmdCounter::Load,
+                        AmdCounter::Store,
+                        AmdCounter::Ds,
+                        AmdCounter::Km,
+                        AmdCounter::X,
+                        AmdCounter::Async,
+                        AmdCounter::Tensor,
+                    ]
+                    .into_iter()
+                    .map(|counter| (counter, 0))
+                    .collect(),
+                }
+            }
             WaitInstruction::Counter { counter, threshold }
                 if self.architecture == AmdArchitecture::Gfx1250 =>
             {

@@ -1,0 +1,826 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "ptxv-mw-report/2",
+ "title": "ptx_verifier gfx1250 B0 multiwave WMMA-types pre-execution check report (one kernel)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema",
+  "request_sha256",
+  "role",
+  "profile",
+  "verifier",
+  "source",
+  "object",
+  "target",
+  "kernel",
+  "parser",
+  "execution",
+  "checks",
+  "memory_events",
+  "outputs",
+  "mode",
+  "assumptions",
+  "result_class",
+  "reasons",
+  "elapsed_seconds"
+ ],
+ "$defs": {
+  "status": {
+   "enum": [
+    "PASS",
+    "FAIL",
+    "UNKNOWN",
+    "NOT_APPLICABLE"
+   ]
+  },
+  "sha": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "event": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "line",
+    "text"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "text": {
+     "type": "string"
+    },
+    "pc": {
+     "type": "integer"
+    }
+   }
+  },
+  "witness": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "events"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "READ_BEFORE_READY",
+      "WRITE_BEFORE_SOURCE_RELEASED",
+      "MISSING_COMPLETION",
+      "OUT_OF_OBJECT_ACCESS",
+      "GUARD_ACCESS",
+      "NON_SPECULATIVE_PREFETCH_OUTSIDE_OBJECT",
+      "MEMORY_CONFLICT",
+      "INCOMPLETE_TERMINATION",
+      "OTHER",
+      "WMMA_AB_READ_BEFORE_READY",
+      "WMMA_VALU_READ_BEFORE_READY",
+      "WMMA_VALU_DESTINATION_REUSE",
+      "WMMA_VALU_SOURCE_REUSE",
+      "WMMA_SAME_ARGUMENTS_BACK_TO_BACK",
+      "WMMA_UNLISTED_CHAIN_BELOW_POLICY",
+      "WMMA_EXEC0_SLOTS_UNRESOLVED",
+      "WMMA_SCALE_SOURCE_BELOW_POLICY"
+     ]
+    },
+    "events": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/event"
+     }
+    },
+    "register": {
+     "type": "string"
+    },
+    "lane": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 31
+    },
+    "address": {
+     "type": "string",
+     "pattern": "^0x[0-9a-f]+$"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "object": {
+     "type": "string"
+    },
+    "guard": {
+     "enum": [
+      "pre",
+      "post"
+     ]
+    },
+    "word_index": {
+     "type": "integer",
+     "description": "word offset inside the named guard or object"
+    },
+    "detail": {
+     "type": "string"
+    }
+   }
+  },
+  "check": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "status",
+    "witnesses",
+    "unresolved"
+   ],
+   "properties": {
+    "id": {
+     "enum": [
+      "trace_completeness",
+      "wait_readiness",
+      "barrier_generations",
+      "memory_conflicts",
+      "object_bounds",
+      "prefetch_policy",
+      "store_completion",
+      "mode_order",
+      "wmma_hazards"
+     ]
+    },
+    "status": {
+     "$ref": "#/$defs/status"
+    },
+    "certified": {
+     "type": "boolean",
+     "description": "true only when a FAIL carries a validated witness"
+    },
+    "witnesses": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/witness"
+     }
+    },
+    "unresolved": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ },
+ "properties": {
+  "schema": {
+   "const": "ptxv-mw-report/2"
+  },
+  "request_sha256": {
+   "$ref": "#/$defs/sha"
+  },
+  "role": {
+   "enum": [
+    "cand",
+    "twin",
+    "control"
+   ]
+  },
+  "profile": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "dependency_profile",
+    "allowlist_sha256",
+    "pending_ops",
+    "enabled_pending_ops",
+    "rules"
+   ],
+   "properties": {
+    "id": {
+     "const": "gfx1250-b0-mw/2"
+    },
+    "dependency_profile": {
+     "const": "gfx1250-b0-sched0-mw2/1"
+    },
+    "allowlist_sha256": {
+     "$ref": "#/$defs/sha"
+    },
+    "pending_ops": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "enabled_pending_ops": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "rules": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "id",
+       "basis"
+      ],
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "basis": {
+        "enum": [
+         "conservative_policy",
+         "documented",
+         "documented_interpretation",
+         "hardware_observation"
+        ]
+       },
+       "source": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "verifier": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "version",
+    "git_rev",
+    "git_dirty",
+    "exe_sha256"
+   ],
+   "properties": {
+    "version": {
+     "type": "string"
+    },
+    "git_rev": {
+     "type": "string"
+    },
+    "git_dirty": {
+     "type": "boolean"
+    },
+    "exe_sha256": {
+     "$ref": "#/$defs/sha"
+    }
+   }
+  },
+  "source": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "path",
+    "sha256",
+    "matches_request"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "sha256": {
+     "$ref": "#/$defs/sha"
+    },
+    "matches_request": {
+     "type": "boolean"
+    }
+   }
+  },
+  "object": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "sha256"
+   ],
+   "properties": {
+    "sha256": {
+     "$ref": "#/$defs/sha"
+    }
+   }
+  },
+  "target": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "directive",
+    "metadata_target",
+    "normalized",
+    "features",
+    "code_object_version"
+   ],
+   "properties": {
+    "directive": {
+     "type": "string"
+    },
+    "metadata_target": {
+     "type": "string"
+    },
+    "normalized": {
+     "const": "gfx1250"
+    },
+    "features": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "code_object_version": {
+     "const": 6
+    }
+   }
+  },
+  "kernel": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "size_bytes",
+    "instructions",
+    "padding_after_size_bytes",
+    "descriptor"
+   ],
+   "properties": {
+    "name": {
+     "const": "kernel"
+    },
+    "size_bytes": {
+     "type": "integer"
+    },
+    "instructions": {
+     "type": "integer"
+    },
+    "padding_after_size_bytes": {
+     "type": "integer"
+    },
+    "descriptor": {
+     "type": "object",
+     "description": "kernarg_size, user_sgpr_kernarg_segment_ptr, wavefront_size32, next_free_vgpr, next_free_sgpr, group_segment_fixed_size, float_round_mode_32/16_64, float_denorm_mode_32/16_64, inst_pref_size: recorded metadata only"
+    }
+   }
+  },
+  "parser": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "status",
+    "diagnostics",
+    "refused_ops"
+   ],
+   "properties": {
+    "status": {
+     "enum": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "ERROR"
+     ]
+    },
+    "diagnostics": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "line",
+       "message"
+      ],
+      "properties": {
+       "line": {
+        "type": "integer"
+       },
+       "column": {
+        "type": "integer"
+       },
+       "message": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "refused_ops": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "line",
+       "mnemonic",
+       "reason"
+      ],
+      "properties": {
+       "line": {
+        "type": "integer"
+       },
+       "mnemonic": {
+        "type": "string"
+       },
+       "reason": {
+        "enum": [
+         "NOT_IN_PROFILE",
+         "PENDING_HARDWARE_CONTROL",
+         "EXCLUDED_OP",
+         "MODE_ACCESS",
+         "FLOATING_POINT",
+         "OPERAND_FORM_NOT_IN_PROFILE",
+         "MODE_FORM_NOT_IN_PROFILE",
+         "UNSUPPORTED"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "execution": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "status",
+    "instructions_executed",
+    "waves",
+    "abort"
+   ],
+   "properties": {
+    "status": {
+     "enum": [
+      "COMPLETE",
+      "ABORTED",
+      "BUDGET_EXHAUSTED",
+      "NOT_RUN"
+     ]
+    },
+    "instructions_executed": {
+     "type": "integer"
+    },
+    "waves": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "wave",
+       "terminated_by"
+      ],
+      "properties": {
+       "wave": {
+        "type": "integer"
+       },
+       "terminated_by": {
+        "enum": [
+         "s_endpgm",
+         "none"
+        ]
+       }
+      }
+     }
+    },
+    "abort": {
+     "oneOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "required": [
+        "reason"
+       ],
+       "properties": {
+        "pc": {
+         "type": "integer"
+        },
+        "line": {
+         "type": "integer"
+        },
+        "lane": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "reason": {
+         "type": "string"
+        }
+       }
+      }
+     ]
+    }
+   }
+  },
+  "checks": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/check"
+   },
+   "minItems": 9,
+   "maxItems": 9
+  },
+  "memory_events": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kernarg_loads",
+    "stores",
+    "prefetches",
+    "loads"
+   ],
+   "properties": {
+    "kernarg_loads": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     }
+    },
+    "loads": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "description": "non-kernarg loads; must be empty under the m1 profile"
+    },
+    "stores": {
+     "type": "object",
+     "required": [
+      "instructions",
+      "bytes_in_out",
+      "bytes_outside_out"
+     ],
+     "properties": {
+      "instructions": {
+       "type": "integer"
+      },
+      "bytes_in_out": {
+       "type": "integer"
+      },
+      "bytes_outside_out": {
+       "type": "integer"
+      }
+     }
+    },
+    "prefetches": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "line",
+       "scope",
+       "lo",
+       "hi",
+       "objects_hit",
+       "xcnt_charged"
+      ],
+      "properties": {
+       "line": {
+        "type": "integer"
+       },
+       "scope": {
+        "type": "string"
+       },
+       "lo": {
+        "type": "string"
+       },
+       "hi": {
+        "type": "string"
+       },
+       "objects_hit": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "xcnt_charged": {
+        "type": "boolean"
+       }
+      }
+     }
+    }
+   }
+  },
+  "outputs": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "contract",
+    "object",
+    "words",
+    "status",
+    "values",
+    "undefined"
+   ],
+   "properties": {
+    "contract": {
+     "const": "raw-u32-mw"
+    },
+    "object": {
+     "const": "out"
+    },
+    "words": {
+     "type": "integer"
+    },
+    "status": {
+     "enum": [
+      "COMPLETE",
+      "COMPLETE_AS_DECLARED",
+      "PARTIAL",
+      "NOT_AVAILABLE"
+     ]
+    },
+    "values": {
+     "type": "array",
+     "items": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "minimum": 0,
+      "maximum": 4294967295
+     }
+    },
+    "undefined": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "index",
+       "reason"
+      ],
+      "properties": {
+       "index": {
+        "type": "integer"
+       },
+       "reason": {
+        "enum": [
+         "NOT_WRITTEN",
+         "SYMBOLIC",
+         "FLOATING_POINT_DERIVED",
+         "UNDEFINED_BITS",
+         "OPAQUE",
+         "MULTIPLE_WRITES_UNORDERED"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "assumptions": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "id",
+     "text"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "text": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "result_class": {
+   "enum": [
+    "PASS",
+    "REJECT",
+    "UNKNOWN_UNSUPPORTED",
+    "ERROR",
+    "TIMEOUT"
+   ]
+  },
+  "reasons": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "elapsed_seconds": {
+   "type": "number"
+  },
+  "mode": {
+   "description": "MODE FP_ROUND (MODE[3:0]) and FP_DENORM (MODE[7:4]) at entry, every executed MODE access in order, and the final fields. Null fields are undefined.",
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "entry",
+    "accesses",
+    "final"
+   ],
+   "properties": {
+    "entry": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "fp_round",
+      "fp_denorm",
+      "source"
+     ],
+     "properties": {
+      "fp_round": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "minimum": 0,
+       "maximum": 15
+      },
+      "fp_denorm": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "minimum": 0,
+       "maximum": 15
+      },
+      "source": {
+       "type": "string"
+      }
+     }
+    },
+    "accesses": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "line",
+       "text",
+       "op",
+       "offset",
+       "width",
+       "access",
+       "value"
+      ],
+      "properties": {
+       "line": {
+        "type": "integer"
+       },
+       "text": {
+        "type": "string"
+       },
+       "op": {
+        "enum": [
+         "s_getreg_b32",
+         "s_setreg_b32",
+         "s_setreg_imm32_b32",
+         "s_round_mode",
+         "s_denorm_mode"
+        ]
+       },
+       "offset": {
+        "enum": [
+         0,
+         4
+        ]
+       },
+       "width": {
+        "const": 4
+       },
+       "access": {
+        "enum": [
+         "read",
+         "write"
+        ]
+       },
+       "value": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 15
+       }
+      }
+     }
+    },
+    "final": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "fp_round",
+      "fp_denorm"
+     ],
+     "properties": {
+      "fp_round": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "minimum": 0,
+       "maximum": 15
+      },
+      "fp_denorm": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "minimum": 0,
+       "maximum": 15
+      }
+     }
+    }
+   }
+  }
+ }
+}

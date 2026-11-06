@@ -24,8 +24,9 @@ pub mod solve;
 
 pub use aggregate::{Decision, KernelEvidence, Verdict, decide};
 pub use backend::{
-    Backend, CertifiedMemoryConflict, CertifiedScalarReadiness, CertifiedTensorBounds,
-    KernelModule, SourceAnalysisParts, SourceKernelVerification, verify_source_kernel,
+    Backend, CertifiedGlobalBounds, CertifiedMemoryConflict, CertifiedScalarReadiness,
+    CertifiedTensorBounds, KernelModule, SourceAnalysisParts, SourceKernelVerification,
+    verify_source_kernel,
 };
 pub use equivalence::{Element, EquivalenceVerdict, check_equivalence, confirm_differences};
 pub use extract::LeanExtractionError;

@@ -278,7 +278,8 @@ pub(crate) fn validate_typed_profile(instruction: &Instruction) -> Result<(), St
     }
     super::instr::validate_control(instruction).map_err(|e| e.message)?;
     let (opcode, mut min, mut max) = match instruction.mnemonic.as_str() {
-        "s_getreg_b32" => (Opcode::ScalarAlu, 2, 2),
+        "s_getreg_b32" | "s_setreg_b32" | "s_setreg_imm32_b32" => (Opcode::ScalarAlu, 2, 2),
+        "s_round_mode" | "s_denorm_mode" => (Opcode::ScalarAlu, 1, 1),
         "s_delay_alu" => (Opcode::Control, 1, 1),
         name => super::instr::signature(name)
             .or_else(|| signature(name))
@@ -316,9 +317,15 @@ pub(crate) fn signature(name: &str) -> Option<(Opcode, usize, usize)> {
         match name.trim_end_matches("_e32").trim_end_matches("_e64") {
             "s_load_b32" | "s_load_b64" | "s_load_b96" | "s_load_b128" | "s_load_b256"
             | "s_load_b512" | "s_load_u8" | "s_load_u16" => (ScalarMemory, 3, 3),
-            "s_get_pc_i64" => (ScalarAlu, 1, 1),
+            "s_get_pc_i64" | "s_get_shader_cycles_u64" => (ScalarAlu, 1, 1),
+            "s_sendmsg_rtn_b32" => (ScalarAlu, 2, 2),
             "s_cvt_f32_i32" | "s_cvt_f32_u32" => (ScalarAlu, 2, 2),
-            "global_load_async_to_lds_b128" => (VectorMemory, 3, 3),
+            "global_load_async_to_lds_b128"
+            | "global_load_async_to_lds_b64"
+            | "global_load_async_to_lds_b32" => (VectorMemory, 3, 3),
+            "buffer_load_b32" | "buffer_load_b64" | "buffer_load_b96" | "buffer_store_b32"
+            | "buffer_store_b96" | "buffer_store_b128" => (VectorMemory, 4, 4),
+            "global_prefetch_b8" => (VectorMemory, 2, 2),
             "flat_load_u8"
             | "flat_load_i8"
             | "flat_load_u16"
@@ -360,7 +367,9 @@ pub(crate) fn signature(name: &str) -> Option<(Opcode, usize, usize)> {
             | "s_wait_kmcnt"
             | "s_wait_xcnt"
             | "s_wait_asynccnt"
-            | "s_wait_tensorcnt" => (Wait, 1, 1),
+            | "s_wait_tensorcnt"
+            | "s_wait_alu" => (Wait, 1, 1),
+            "s_wait_idle" => (Wait, 0, 0),
             "s_barrier_signal" | "s_barrier_wait" | "s_barrier_init" | "s_barrier_join" => {
                 (Barrier, 1, 1)
             }
@@ -392,9 +401,99 @@ pub(crate) fn signature(name: &str) -> Option<(Opcode, usize, usize)> {
             "v_wmma_f32_16x16x4_f32" | "v_wmma_f32_16x16x32_f16" | "v_wmma_f32_16x16x32_bf16" => {
                 (Matrix, 4, 4)
             }
+            // Executed only under gfx1250-b0-wmma/2; elsewhere the evaluator
+            // refuses them as unsupported.
+            "v_wmma_i32_16x16x64_iu8"
+            | "v_wmma_f32_16x16x64_fp8_fp8"
+            | "v_wmma_f32_16x16x128_fp8_fp8" => (Matrix, 4, 4),
+            // Executed only under gfx1250-b0-wmma/3 (BF8 combinations,
+            // F8F6F4/F4 and the 4-dword block-scaled forms with their two
+            // scale operands).
+            "v_wmma_f32_16x16x64_fp8_bf8"
+            | "v_wmma_f32_16x16x64_bf8_fp8"
+            | "v_wmma_f32_16x16x64_bf8_bf8"
+            | "v_wmma_f32_16x16x128_fp8_bf8"
+            | "v_wmma_f32_16x16x128_bf8_fp8"
+            | "v_wmma_f32_16x16x128_bf8_bf8"
+            | "v_wmma_f32_16x16x128_f8f6f4"
+            | "v_wmma_f32_32x16x128_f4" => (Matrix, 4, 4),
+            "v_wmma_scale_f32_16x16x128_f8f6f4"
+            | "v_wmma_scale16_f32_16x16x128_f8f6f4"
+            | "v_wmma_scale_f32_32x16x128_f4"
+            | "v_wmma_scale16_f32_32x16x128_f4" => (Matrix, 6, 6),
+            // Executed only under gfx1250-b0-wmma/4: 16-bit-output WMMA and
+            // SWMMAC (D, packed A, B, sparsity index; C is D).
+            "v_wmma_f16_16x16x32_f16"
+            | "v_wmma_bf16_16x16x32_bf16"
+            | "v_wmma_bf16f32_16x16x32_bf16"
+            | "v_wmma_f16_16x16x64_fp8_fp8"
+            | "v_wmma_f16_16x16x64_fp8_bf8"
+            | "v_wmma_f16_16x16x64_bf8_fp8"
+            | "v_wmma_f16_16x16x64_bf8_bf8"
+            | "v_wmma_f16_16x16x128_fp8_fp8"
+            | "v_wmma_f16_16x16x128_fp8_bf8"
+            | "v_wmma_f16_16x16x128_bf8_fp8"
+            | "v_wmma_f16_16x16x128_bf8_bf8"
+            | "v_swmmac_f32_16x16x64_f16"
+            | "v_swmmac_f32_16x16x64_bf16"
+            | "v_swmmac_f16_16x16x64_f16"
+            | "v_swmmac_bf16_16x16x64_bf16"
+            | "v_swmmac_bf16f32_16x16x64_bf16"
+            | "v_swmmac_f32_16x16x128_fp8_fp8"
+            | "v_swmmac_f32_16x16x128_fp8_bf8"
+            | "v_swmmac_f32_16x16x128_bf8_fp8"
+            | "v_swmmac_f32_16x16x128_bf8_bf8"
+            | "v_swmmac_f16_16x16x128_fp8_fp8"
+            | "v_swmmac_f16_16x16x128_fp8_bf8"
+            | "v_swmmac_f16_16x16x128_bf8_fp8"
+            | "v_swmmac_f16_16x16x128_bf8_bf8"
+            | "v_swmmac_i32_16x16x128_iu8" => (Matrix, 4, 4),
             _ => return None,
         },
     )
+}
+
+/// LLVM's gfx12 DEPCTR operand: a raw unsigned16 immediate or a list of
+/// `depctr_<field>(n)` items. Unlisted fields keep the no-wait encoding.
+fn parse_wait_alu(text: &str) -> Result<u16, String> {
+    if let Some(value) = super::instr::integer(text) {
+        return u16::try_from(value).map_err(|_| "s_wait_alu immediate must be unsigned16".into());
+    }
+    // Matches the event model's no-wait encoding; the frontend stays graph-free.
+    let mut encoded: u16 = 0xff9f;
+    let mut seen = std::collections::BTreeSet::new();
+    let items: Vec<_> = text
+        .split(|c: char| c.is_whitespace() || c == '&')
+        .filter(|item| !item.is_empty())
+        .collect();
+    if items.is_empty() {
+        return Err("s_wait_alu requires an operand".into());
+    }
+    for item in items {
+        let (field, value) = item
+            .strip_prefix("depctr_")
+            .and_then(|rest| rest.split_once('('))
+            .and_then(|(field, value)| value.strip_suffix(')').map(|value| (field, value)))
+            .ok_or_else(|| format!("invalid s_wait_alu field `{item}`"))?;
+        let (shift, maximum) = match field {
+            "sa_sdst" => (0, 1),
+            "va_vcc" => (1, 1),
+            "vm_vsrc" => (2, 7),
+            "hold_cnt" => (7, 1),
+            "va_ssrc" => (8, 1),
+            "va_sdst" => (9, 7),
+            "va_vdst" => (12, 15),
+            _ => return Err(format!("unknown s_wait_alu field `{field}`")),
+        };
+        if !seen.insert(field) {
+            return Err(format!("duplicate s_wait_alu field `{field}`"));
+        }
+        let value = super::instr::integer(value)
+            .filter(|value| (0..=maximum).contains(value))
+            .ok_or_else(|| format!("s_wait_alu field `{field}` is outside 0..={maximum}"))?;
+        encoded = encoded & !((maximum as u16) << shift) | (value as u16) << shift;
+    }
+    Ok(encoded)
 }
 
 pub(super) fn parse_special(
@@ -405,6 +504,20 @@ pub(super) fn parse_special(
         message: message.into(),
         span,
     };
+    // The returned-message form names its message symbolically; it is the
+    // message code (0x87, the SE and XCC id message) as an integer operand.
+    if let Some(("s_sendmsg_rtn_b32", rest)) = text.split_once(char::is_whitespace)
+        && let Some((destination, message)) = rest.split_once(',')
+        && message.trim() == "sendmsg(MSG_RTN_GET_SE_AID_ID)"
+    {
+        let normalized = format!("s_sendmsg_rtn_b32 {}, 135", destination.trim());
+        return super::instr::parse_instruction(
+            &normalized,
+            span,
+            crate::target::Architecture::Gfx1250,
+        )
+        .map(Some);
+    }
     if let Some(("s_sendmsg", rest)) = text.split_once(char::is_whitespace)
         && rest.trim() == "sendmsg(MSG_DEALLOC_VGPRS)"
     {
@@ -497,6 +610,19 @@ pub(super) fn parse_special(
             span,
         }));
     }
+    if let Some(rest) = text.strip_prefix("s_wait_alu ") {
+        return parse_wait_alu(rest.trim())
+            .map(|encoded| {
+                Some(Instruction {
+                    mnemonic: "s_wait_alu".into(),
+                    opcode: Opcode::Wait,
+                    operands: vec![Operand::Integer(i64::from(encoded))],
+                    modifiers: vec![],
+                    span,
+                })
+            })
+            .map_err(|message| fail(&message));
+    }
     if let Some(rest) = text.strip_prefix("s_delay_alu ") {
         let encoded = if let Some(value) = super::instr::integer(rest.trim()) {
             value
@@ -563,15 +689,9 @@ pub(super) fn parse_special(
             span,
         }));
     }
-    if let Some(rest) = text.strip_prefix("s_getreg_b32 ") {
-        let (destination, source) = rest
-            .split_once(',')
-            .ok_or_else(|| fail("s_getreg_b32 requires destination and hwreg"))?;
-        let mut instruction = super::instr::parse_instruction(
-            &format!("s_mov_b32 {}, 0", destination.trim()),
-            span,
-            Architecture::Gfx1250,
-        )?;
+    // `hwreg(NAME[, offset, width])`; the name is kept as written so that a
+    // profile can accept exact spellings only.
+    let hwreg = |source: &str| -> Result<Operand, ParseError> {
         let args = source
             .trim()
             .strip_prefix("hwreg(")
@@ -580,8 +700,16 @@ pub(super) fn parse_special(
             .split(',')
             .map(str::trim)
             .collect::<Vec<_>>();
+        // `hwreg(NAME)` selects the whole register.
+        if args.len() == 1 && !args[0].is_empty() {
+            return Ok(Operand::HardwareRegister {
+                name: args[0].into(),
+                offset: 0,
+                width: 32,
+            });
+        }
         if args.len() != 3 {
-            return Err(fail("hwreg requires name,offset,width"));
+            return Err(fail("hwreg requires name or name,offset,width"));
         }
         let offset = args[1]
             .parse::<u8>()
@@ -592,13 +720,81 @@ pub(super) fn parse_special(
         if width == 0 || u16::from(offset) + u16::from(width) > 32 {
             return Err(fail("hwreg bit selection outside 32-bit register"));
         }
-        instruction.mnemonic = "s_getreg_b32".into();
-        instruction.operands[1] = Operand::HardwareRegister {
+        Ok(Operand::HardwareRegister {
             name: args[0].into(),
             offset,
             width,
-        };
+        })
+    };
+    if let Some(rest) = text.strip_prefix("s_getreg_b32 ") {
+        let (destination, source) = rest
+            .split_once(',')
+            .ok_or_else(|| fail("s_getreg_b32 requires destination and hwreg"))?;
+        let mut instruction = super::instr::parse_instruction(
+            &format!("s_mov_b32 {}, 0", destination.trim()),
+            span,
+            Architecture::Gfx1250,
+        )?;
+        instruction.mnemonic = "s_getreg_b32".into();
+        instruction.operands[1] = hwreg(source)?;
         return Ok(Some(instruction));
+    }
+    // SETREG writes a hardware-register field from an SGPR (SOPK) or from a
+    // 32-bit literal (SOPK + literal). The hwreg operand is the destination.
+    for (prefix, mnemonic) in [
+        ("s_setreg_b32 ", "s_setreg_b32"),
+        ("s_setreg_imm32_b32 ", "s_setreg_imm32_b32"),
+    ] {
+        let Some(rest) = text.strip_prefix(prefix) else {
+            continue;
+        };
+        let (destination, source) = rest
+            .rsplit_once(',')
+            .ok_or_else(|| fail("s_setreg requires hwreg and source"))?;
+        let parsed = super::instr::parse_instruction(
+            &format!("s_mov_b32 s0, {}", source.trim()),
+            span,
+            Architecture::Gfx1250,
+        )?;
+        let source = parsed.operands[1].clone();
+        let shape_ok = if mnemonic == "s_setreg_b32" {
+            matches!(&source, Operand::Register(r) if r.class == RegisterClass::Scalar && r.count == 1)
+        } else {
+            matches!(source, Operand::Integer(value) if (i64::from(i32::MIN)..=i64::from(u32::MAX)).contains(&value))
+        };
+        if !shape_ok {
+            return Err(fail(if mnemonic == "s_setreg_b32" {
+                "s_setreg_b32 requires one SGPR source"
+            } else {
+                "s_setreg_imm32_b32 requires a 32-bit integer source"
+            }));
+        }
+        return Ok(Some(Instruction {
+            mnemonic: mnemonic.into(),
+            opcode: Opcode::ScalarAlu,
+            operands: vec![hwreg(destination)?, source],
+            modifiers: vec![],
+            span,
+        }));
+    }
+    // SOPP MODE writes with a 16-bit immediate.
+    for mnemonic in ["s_round_mode", "s_denorm_mode"] {
+        let Some(rest) = text
+            .strip_prefix(mnemonic)
+            .and_then(|rest| rest.strip_prefix(char::is_whitespace))
+        else {
+            continue;
+        };
+        let value = super::instr::integer(rest.trim())
+            .filter(|value| (0..=0xffff).contains(value))
+            .ok_or_else(|| fail(&format!("{mnemonic} requires an unsigned 16-bit immediate")))?;
+        return Ok(Some(Instruction {
+            mnemonic: mnemonic.into(),
+            opcode: Opcode::ScalarAlu,
+            operands: vec![Operand::Integer(value)],
+            modifiers: vec![],
+            span,
+        }));
     }
     Ok(None)
 }

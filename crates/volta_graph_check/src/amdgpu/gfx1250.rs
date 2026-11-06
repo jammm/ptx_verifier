@@ -8,7 +8,10 @@
 //! completed effects. Neither trace order nor a signal fabricates a data wait.
 
 use super::*;
-use volta_graph::{AccessMode, AmdWmmaKind, Assumption, ThreadIx};
+use volta_graph::{
+    AccessMode, AmdBufferRangeCheck, AmdGlobalAccess, AmdSmallFloat, AmdSwmmacInput, AmdWmmaKind,
+    Assumption, ThreadIx,
+};
 mod named;
 
 const WAVE: usize = 32;
@@ -42,6 +45,7 @@ fn charges(class: AmdMemoryClass) -> Option<Vec<(AmdCounter, u16)>> {
     use AmdCounter::*;
     Some(match class {
         AmdMemoryClass::VectorLoad => vec![(Load, 1), (X, 1)],
+        AmdMemoryClass::Prefetch => vec![(X, 1)],
         AmdMemoryClass::VectorStore => vec![(Store, 1), (X, 1)],
         AmdMemoryClass::GlobalAtomicAddF32NoReturn => vec![(Store, 1), (X, 1)],
         AmdMemoryClass::FlatGlobalLoad | AmdMemoryClass::FlatLdsLoad => {
@@ -58,6 +62,21 @@ fn charges(class: AmdMemoryClass) -> Option<Vec<(AmdCounter, u16)>> {
     })
 }
 
+/// Provenance kinds of memory instructions (they form replay groups).
+fn memory_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "scalar memory"
+            | "vector memory"
+            | "LDS"
+            | "async memory"
+            | "tensor memory"
+            | "atomic f32 add no return"
+            | "flat memory"
+            | "prefetch"
+    )
+}
+
 fn replay_group(class: AmdMemoryClass) -> Option<bool> {
     // This conservative source-group classification does not infer the
     // compiler's LOCAL MMO from a resolved LDS effect. Generic FLAT encoding
@@ -66,6 +85,7 @@ fn replay_group(class: AmdMemoryClass) -> Option<bool> {
     match class {
         AmdMemoryClass::ScalarLoad => Some(false),
         AmdMemoryClass::VectorLoad
+        | AmdMemoryClass::Prefetch
         | AmdMemoryClass::VectorStore
         | AmdMemoryClass::GlobalAtomicAddF32NoReturn
         | AmdMemoryClass::FlatGlobalLoad
@@ -88,6 +108,9 @@ fn expected(kind: &str, mask: u64) -> Option<Option<&'static str>> {
             Some("memory")
         }
         "wait" => Some("wait"),
+        "alu wait" => Some("alu wait"),
+        "prefetch" if mask != 0 => Some("memory"),
+        "prefetch" => None,
         "s_nop" => Some("delay"),
         "s_delay_alu" => Some("delay alu"),
         "barrier signal" => Some("signal"),
@@ -114,6 +137,48 @@ fn expected(kind: &str, mask: u64) -> Option<Option<&'static str>> {
         | "atomic f32 add no return" => None,
         _ => return None,
     })
+}
+
+/// Lanes are strictly increasing and exactly the set bits of `mask`.
+fn exact_active_lanes(lanes: &[(u8, u64)], mask: u64) -> bool {
+    lanes.windows(2).all(|pair| pair[0].0 < pair[1].0)
+        && lanes.iter().try_fold(0u64, |seen, &(lane, _)| {
+            (lane < 32).then(|| seen | (1u64 << lane))
+        }) == Some(mask)
+}
+
+/// Independent check of one footprint against a configured global layout.
+/// Without a layout only non-speculative prefetches are unvalidated; ordinary
+/// accesses keep the target's existing allocation contract.
+pub(super) fn global_bounds_defect(
+    graph: &EventGraph,
+    access: AmdGlobalAccess,
+    address: u64,
+    bytes: u64,
+) -> Option<&'static str> {
+    let layout = graph.global_region_layout();
+    let speculative = matches!(access, AmdGlobalAccess::Prefetch(s) if s.speculative_prefetch());
+    if layout.is_empty() {
+        return (matches!(access, AmdGlobalAccess::Prefetch(_)) && !speculative)
+            .then_some("non-speculative prefetch requires a configured global object layout");
+    }
+    let Some(end) = address.checked_add(bytes) else {
+        return Some("global footprint overflows the address space");
+    };
+    if layout
+        .iter()
+        .any(|r| r.guard && address < r.base.saturating_add(r.size) && r.base < end)
+    {
+        return Some("global footprint touches a configured guard region");
+    }
+    if !speculative
+        && !layout
+            .iter()
+            .any(|r| !r.guard && r.base <= address && end <= r.base.saturating_add(r.size))
+    {
+        return Some("global footprint leaves every configured object");
+    }
+    None
 }
 
 fn registers(regs: &[AmdRegister], mask: u64, event: EventId, unresolved: &mut Vec<Unresolved>) {
@@ -249,6 +314,9 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
     let mut m0_defined = vec![false; waves];
     let mut instructions = HashMap::<u32, InstructionRecord>::new();
     let mut issues = HashMap::new();
+    let mut open_prefetch = HashMap::<u32, EventId>::new();
+    let mut prefetch_footprints = HashSet::new();
+    let mut range_checks = HashMap::<EventId, &AmdBufferRangeCheck>::new();
     let mut instruction_count = 0;
     let mut ended = HashSet::new();
     for record in graph.amd_events() {
@@ -395,6 +463,7 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                         .iter()
                         .all(|r| r.file == AmdRegisterFile::Vector),
                     AmdMemoryClass::VectorStore
+                    | AmdMemoryClass::Prefetch
                     | AmdMemoryClass::FlatGlobalStore
                     | AmdMemoryClass::FlatLdsStore
                     | AmdMemoryClass::GlobalAtomicAddF32NoReturn
@@ -414,6 +483,7 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                     let source_kind =
                         graph.provenance().instructions[instruction.pc.unwrap().0 as usize].kind;
                     let correct_kind = match class {
+                        AmdMemoryClass::Prefetch => source_kind == "prefetch",
                         AmdMemoryClass::ScalarLoad => source_kind == "scalar memory",
                         AmdMemoryClass::VectorLoad | AmdMemoryClass::VectorStore => {
                             source_kind == "vector memory"
@@ -497,6 +567,9 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                     record.event,
                     (record, instruction.map_or(0, |i| i.exec_mask)),
                 );
+                if *class == AmdMemoryClass::Prefetch {
+                    open_prefetch.insert(record.wave, record.event);
+                }
             }
             AmdEventKind::TensorAccessFault {
                 descriptor,
@@ -661,6 +734,131 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                     }
                 }
             }
+            AmdEventKind::PrefetchFootprint {
+                issue,
+                scope,
+                lanes,
+            } => {
+                let mask = instructions
+                    .get(&record.wave)
+                    .filter(|i| i.event < *issue)
+                    .map_or(0, |i| i.exec_mask);
+                if open_prefetch.remove(&record.wave) != Some(*issue)
+                    || !prefetch_footprints.insert(*issue)
+                    || !exact_active_lanes(lanes, mask)
+                {
+                    unresolved.push(Unresolved::at(
+                        record.event,
+                        "prefetch footprint must follow its own issue and list every active lane once",
+                    ));
+                }
+                let access = AmdGlobalAccess::Prefetch(*scope);
+                if let Some(reason) = lanes
+                    .iter()
+                    .find_map(|&(_, address)| global_bounds_defect(graph, access, address, 1))
+                {
+                    unresolved.push(Unresolved::at(record.event, reason));
+                }
+            }
+            AmdEventKind::GlobalAccessFault {
+                access,
+                bytes_per_lane,
+                lanes,
+            } => {
+                let instruction =
+                    claim(graph, record, &mut instructions, "memory", &mut unresolved);
+                let kind = match access {
+                    AmdGlobalAccess::Prefetch(_) => "prefetch",
+                    AmdGlobalAccess::Load | AmdGlobalAccess::Store => "vector memory",
+                };
+                if !prefix
+                    || graph.global_region_layout().is_empty()
+                    || *bytes_per_lane == 0
+                    || record.event.0 as usize + 1 != graph.events().len()
+                    || instruction.is_none_or(|i| {
+                        i.exec_mask == 0
+                            || graph.provenance().instructions[i.pc.unwrap().0 as usize].kind
+                                != kind
+                            || !exact_active_lanes(lanes, i.exec_mask)
+                    })
+                {
+                    unresolved.push(Unresolved::at(
+                        record.event,
+                        "global access fault requires an exact active terminal instruction, a configured layout and independent prefix validation",
+                    ));
+                }
+            }
+            AmdEventKind::ModeAccess { offset, width, .. } => {
+                // A MODE access is recorded only by the B0 m2 profile, right
+                // after its own ordinary scalar instruction record (GETREG is
+                // provenance kind "xcnt drain"); it has no register effects.
+                let profile = graph
+                    .provenance()
+                    .assumptions
+                    .contains(&Assumption::Gfx1250B0M2ModeProfile);
+                let own = instructions.get(&record.wave).is_some_and(|i| {
+                    i.pc == graph.event(record.event).pc
+                        && i.expected.is_none()
+                        && i.pc.is_some_and(|pc| {
+                            matches!(
+                                graph.provenance().instructions[pc.0 as usize].kind,
+                                "scalar ALU" | "xcnt drain"
+                            )
+                        })
+                });
+                if !profile || !own || !matches!((offset, width), (0 | 4, 4)) {
+                    unresolved.push(Unresolved::at(
+                        record.event,
+                        "MODE access requires the B0 m2 profile, its own scalar instruction record and an FP_ROUND/FP_DENORM field",
+                    ));
+                }
+            }
+            AmdEventKind::BufferRangeCheck { issue, check } => {
+                // Recorded only by the B0 litmus profile, after the effects of
+                // its own untyped buffer issue, once per issue, for exactly the
+                // issue's active lanes; each in-range mask is recomputed here.
+                let profile = graph
+                    .provenance()
+                    .assumptions
+                    .contains(&Assumption::Gfx1250B0LitmusProfile);
+                let mask = issues.get(issue).and_then(|(issued, mask)| {
+                    (issued.wave == record.wave
+                        && graph.event(*issue).pc == graph.event(record.event).pc
+                        && matches!(
+                            issued.kind,
+                            AmdEventKind::MemoryIssue {
+                                class: AmdMemoryClass::VectorLoad | AmdMemoryClass::VectorStore,
+                                ..
+                            }
+                        ))
+                    .then_some(*mask)
+                });
+                let lanes: Vec<_> = check.lanes.iter().map(|l| (l.lane, l.offset)).collect();
+                if !profile
+                    || !(1..=4).contains(&check.dwords)
+                    || mask.is_none_or(|mask| !exact_active_lanes(&lanes, mask))
+                    || check
+                        .lanes
+                        .iter()
+                        .any(|l| l.in_range != check.expected_in_range(l.offset))
+                    || range_checks.insert(*issue, check).is_some()
+                {
+                    unresolved.push(Unresolved::at(
+                        record.event,
+                        "buffer range check requires the B0 litmus profile, its own buffer issue, every active lane once and the documented per-DWORD rule",
+                    ));
+                }
+            }
+            AmdEventKind::AluWait { .. } => {
+                // Every encoding is a valid ALU-only wait; none retires memory.
+                claim(
+                    graph,
+                    record,
+                    &mut instructions,
+                    "alu wait",
+                    &mut unresolved,
+                );
+            }
             AmdEventKind::Delay { cycles } => {
                 claim(graph, record, &mut instructions, "delay", &mut unresolved);
                 if !(1..=16).contains(cycles) {
@@ -694,20 +892,22 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                 sources_ab,
                 accumulator,
                 kind,
+                scales,
+                index,
             } => {
                 let instruction = claim(graph, record, &mut instructions, "wmma", &mut unresolved);
-                for regs in [destinations, sources_ab, accumulator] {
+                for regs in [destinations, sources_ab, accumulator, scales, index] {
                     registers(regs, physical_mask, record.event, &mut unresolved);
                 }
-                let inputs = kind.input_registers();
+                let (a_inputs, b_inputs) = (kind.a_registers(), kind.b_registers());
                 if physical_mask != u32::MAX as u64
                     || instruction.is_none_or(|i| i.exec_mask != u32::MAX as u64)
                     || !vector_tuple(destinations, kind.destination_registers())
-                    || sources_ab.len() != 2 * inputs
-                    || !vector_tuple(&sources_ab[..sources_ab.len().min(inputs)], inputs)
-                    || !vector_tuple(&sources_ab[sources_ab.len().min(inputs)..], inputs)
+                    || sources_ab.len() != a_inputs + b_inputs
+                    || !vector_tuple(&sources_ab[..sources_ab.len().min(a_inputs)], a_inputs)
+                    || !vector_tuple(&sources_ab[sources_ab.len().min(a_inputs)..], b_inputs)
                     || (!accumulator.is_empty()
-                        && !vector_tuple(accumulator, kind.destination_registers()))
+                        && !vector_tuple(accumulator, kind.accumulator_registers()))
                 {
                     unresolved.push(Unresolved::at(
                         record.event,
@@ -719,6 +919,8 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                         || !sources_ab
                             .iter()
                             .chain(accumulator)
+                            .chain(scales)
+                            .chain(index)
                             .all(|r| i.reads.contains(r))
                         || !i
                             .reads
@@ -727,6 +929,8 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                         || i.reads.iter().any(|r| {
                             !sources_ab.contains(r)
                                 && !accumulator.contains(r)
+                                && !scales.contains(r)
+                                && !index.contains(r)
                                 && !(r.file == AmdRegisterFile::Scalar && r.index == 126)
                         })
                 }) {
@@ -752,10 +956,25 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
             "every launched gfx1250 wave requires instruction/register records",
         ));
     }
+    for (&wave, &issue) in &open_prefetch {
+        if prefix
+            && graph
+                .amd_events()
+                .last()
+                .is_some_and(|r| r.event == issue && r.wave == wave)
+        {
+            continue;
+        }
+        unresolved.push(Unresolved::at(
+            issue,
+            "prefetch issue has no footprint record",
+        ));
+    }
     let mut associations = HashMap::new();
     let mut represented = HashMap::<EventId, HashSet<u32>>::new();
     let mut transferred = HashMap::<EventId, HashMap<ThreadIx, (u64, u64)>>::new();
     let mut footprints = HashMap::<(EventId, ThreadIx), (u64, u64)>::new();
+    let mut buffer_effects = HashMap::<(EventId, u32), Vec<(u64, u32)>>::new();
     let mut last_record = HashMap::new();
     for link in graph.amd_memory_effects() {
         associations.insert(link.effect, link);
@@ -883,6 +1102,25 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
                     ));
                 }
                 if let Footprint::Bytes { addr, width } = access.footprint {
+                    if range_checks.contains_key(&link.issue) {
+                        buffer_effects
+                            .entry((link.issue, access.attributed.0 % WAVE as u32))
+                            .or_default()
+                            .push((addr, width));
+                    }
+                    let global_access = match (access.space, *class, read) {
+                        (Space::Global, AmdMemoryClass::ScalarLoad, _) | (Space::Shared, ..) => {
+                            None
+                        }
+                        (Space::Global, _, true) => Some(AmdGlobalAccess::Load),
+                        (Space::Global, _, false) => Some(AmdGlobalAccess::Store),
+                        _ => None,
+                    };
+                    if let Some(reason) = global_access
+                        .and_then(|global| global_bounds_defect(graph, global, addr, width as u64))
+                    {
+                        unresolved.push(Unresolved::at(event_id, reason));
+                    }
                     if atomic {
                         let pair = atomic_pairs
                             .entry((link.issue, access.attributed))
@@ -949,7 +1187,40 @@ fn contract(graph: &EventGraph, prefix: bool) -> AmdTraceResult {
             unreachable!()
         };
         let lanes = represented.get(&id);
-        if *class == AmdMemoryClass::CrossLane {
+        if let Some(check) = range_checks.get(&id) {
+            // A litmus buffer issue: each lane's effects are exactly its
+            // in-range DWORDs at base + offset + 4c; nothing else.
+            let exact = check.lanes.iter().all(|lane| {
+                let mut want: Vec<_> = (0..check.dwords)
+                    .filter(|c| lane.in_range & (1 << c) != 0)
+                    .map(|c| (check.base + lane.offset + 4 * u64::from(c), 4))
+                    .collect();
+                let mut got = buffer_effects
+                    .get(&(id, u32::from(lane.lane)))
+                    .cloned()
+                    .unwrap_or_default();
+                want.sort_unstable();
+                got.sort_unstable();
+                got == want
+            }) && lanes.is_none_or(|lanes| {
+                lanes
+                    .iter()
+                    .all(|lane| check.lanes.iter().any(|l| u32::from(l.lane) == *lane))
+            });
+            if !exact {
+                unresolved.push(Unresolved::at(
+                    id,
+                    "buffer effects differ from the in-range DWORDs of the range check",
+                ));
+            }
+        } else if *class == AmdMemoryClass::Prefetch {
+            if lanes.is_some() || !destinations.is_empty() || !prefetch_footprints.contains(&id) {
+                unresolved.push(Unresolved::at(
+                    id,
+                    "prefetch must have one footprint record and no data effects or results",
+                ));
+            }
+        } else if *class == AmdMemoryClass::CrossLane {
             if lanes.is_some() || destinations.is_empty() {
                 unresolved.push(Unresolved::at(
                     id,
@@ -1102,6 +1373,24 @@ impl WmmaOperation {
         match self.kind {
             AmdWmmaKind::F16_16x16x32 | AmdWmmaKind::Bf16_16x16x32 => 4,
             AmdWmmaKind::F32_16x16x4 => 0,
+            AmdWmmaKind::Fp8Fp8_16x16x128
+            | AmdWmmaKind::Fp8Bf8_16x16x128
+            | AmdWmmaKind::Bf8Fp8_16x16x128
+            | AmdWmmaKind::Bf8Bf8_16x16x128
+            | AmdWmmaKind::F4_32x16x128 => 3,
+            AmdWmmaKind::F8f6f4_16x16x128 { a, b }
+                if !matches!((a, b), (AmdSmallFloat::Fp4, AmdSmallFloat::Fp4)) =>
+            {
+                3
+            }
+            AmdWmmaKind::Iu8_16x16x64 => 8,
+            AmdWmmaKind::Half16x16x32 { .. } => 4,
+            AmdWmmaKind::F16Out8 { k128: true, .. } => 3,
+            AmdWmmaKind::Swmmac {
+                input: AmdSwmmacInput::Iu8,
+                ..
+            } => 4,
+            AmdWmmaKind::Swmmac { .. } => 2,
             _ => 1,
         }
     }
@@ -1164,6 +1453,13 @@ fn check_with_scope(graph: &EventGraph, prefix: bool) -> AmdReport {
     let mut translation_receivers = HashSet::new();
     let mut instruction_at = HashMap::new();
     let mut wmma_at = HashMap::new();
+    // B0 multiwave profile: the wave-start single-group replay mode issues
+    // a group of memory instructions, then waits for XCNT to drain before
+    // the first non-memory instruction.
+    let single_group_replay = graph
+        .provenance()
+        .assumptions
+        .contains(&Assumption::Gfx1250B0MultiwaveProfile);
     let mut valu_ordinal = vec![0u64; waves];
     let mut matrices = vec![Vec::<WmmaOperation>::new(); waves];
     for record in graph.amd_events() {
@@ -1185,10 +1481,14 @@ fn check_with_scope(graph: &EventGraph, prefix: bool) -> AmdReport {
             }
             AmdEventKind::WmmaIssue {
                 ref sources_ab,
+                ref index,
                 kind,
                 ..
             } => {
-                wmma_at.insert(instruction_at[&record.wave], (kind, sources_ab));
+                // The sparsity index is a documented A/B/Index source.
+                let mut sources: Vec<AmdRegister> = sources_ab.clone();
+                sources.extend(index.iter().copied());
+                wmma_at.insert(instruction_at[&record.wave], (kind, sources));
             }
             _ => {}
         }
@@ -1310,7 +1610,8 @@ fn check_with_scope(graph: &EventGraph, prefix: bool) -> AmdReport {
                         | "barrier wait"
                         | "named barrier signal"
                         | "named barrier wait"
-                ) {
+                ) || (single_group_replay && !memory_kind(kind))
+                {
                     wait(AmdCounter::X, 0, &pending[wave], &mut operations);
                 }
                 if let Some(group) = groups.get(&record.event) {
@@ -1639,13 +1940,20 @@ fn check_with_scope(graph: &EventGraph, prefix: bool) -> AmdReport {
                 destinations,
                 sources_ab,
                 accumulator,
+                index,
+                ..
             } => {
                 matrices[wave].push(WmmaOperation {
                     event: record.event,
                     ordinal: valu_ordinal[wave] - 1,
                     kind: *kind,
                     destinations: destinations.clone(),
-                    sources: sources_ab.iter().chain(accumulator).copied().collect(),
+                    sources: sources_ab
+                        .iter()
+                        .chain(accumulator)
+                        .chain(index)
+                        .copied()
+                        .collect(),
                 });
             }
             // Default scheduling interlocks ordinary ALU dependencies. LLVM's
@@ -1654,6 +1962,11 @@ fn check_with_scope(graph: &EventGraph, prefix: bool) -> AmdReport {
             // outside this execution envelope.
             AmdEventKind::DelayAlu { .. }
             | AmdEventKind::Delay { .. }
+            | AmdEventKind::AluWait { .. }
+            | AmdEventKind::PrefetchFootprint { .. }
+            | AmdEventKind::GlobalAccessFault { .. }
+            | AmdEventKind::ModeAccess { .. }
+            | AmdEventKind::BufferRangeCheck { .. }
             | AmdEventKind::TensorAccessFault { .. } => {}
             _ => unreachable!("trace contract rejected legacy target events"),
         }

@@ -1,0 +1,76 @@
+{
+ "backing_allocation": {
+  "base": "0x10000",
+  "bytes": 2048
+ },
+ "guards": [
+  {
+   "base": "0x10000",
+   "bytes": 256,
+   "fill_u32": "0xffffffff",
+   "name": "pre"
+  },
+  {
+   "base": "0x10400",
+   "bytes": 1024,
+   "fill_u32": "0xffffffff",
+   "name": "post"
+  }
+ ],
+ "kernel": "kernel",
+ "launch_file": {
+  "block": [
+   32,
+   1,
+   1
+  ],
+  "grid": [
+   1,
+   1,
+   1
+  ],
+  "kernel": "kernel",
+  "max_instructions": 100000,
+  "params": [
+   {
+    "ptr": "out"
+   }
+  ],
+  "workgroup_id": [
+   0,
+   0,
+   0
+  ]
+ },
+ "lds_bytes": 0,
+ "objects": [
+  {
+   "base": "0x10100",
+   "initial": {
+    "fill_u32": "0xffffffff"
+   },
+   "name": "out",
+   "words": 128
+  },
+  {
+   "base": "0x10300",
+   "initial": {
+    "index_base_u32": "0xda7a0000"
+   },
+   "name": "data",
+   "words": 64
+  }
+ ],
+ "outputs": {
+  "contract": "raw-u32-image",
+  "objects": [
+   "out",
+   "data"
+  ],
+  "words": 192
+ },
+ "profile": "gfx1250-b0-litmus/1",
+ "role": "cand",
+ "schema": "ptxv-litmus-request/1",
+ "template": "bufload"
+}

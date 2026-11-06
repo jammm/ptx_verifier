@@ -1250,6 +1250,8 @@ impl Trace {
                 destinations,
                 sources_ab,
                 accumulator,
+                scales: vec![],
+                index: vec![],
             },
         );
     }
@@ -1411,6 +1413,8 @@ fn malformed_wmma_roles_partial_waves_and_missing_implicit_exec_stay_unknown() {
                 destinations,
                 sources_ab,
                 accumulator: if bad == 4 { tuple(32, 4) } else { vec![] },
+                scales: vec![],
+                index: vec![],
             },
         );
         assert_eq!(
@@ -3507,4 +3511,120 @@ fn named_reinitialization_cannot_erase_an_earlier_phase_violation() {
     let r = check_graph(&t.finish());
     assert_eq!(r.verdict(Property::AmdTrace), Verdict::Pass);
     assert_eq!(r.verdict(Property::AmdBarrier), Verdict::Fail);
+}
+impl Trace {
+    /// A 4-dword block-scaled WMMA: the scale registers are read by the
+    /// instruction and recorded in the issue's `scales`.
+    fn wmma_scaled(&mut self, kind: AmdWmmaKind, dst: u16, ab: u16, scales: Vec<AmdRegister>) {
+        let destinations = tuple(dst, kind.destination_registers());
+        let sources_ab = tuple(ab, kind.a_registers() + kind.b_registers());
+        let accumulator = tuple(dst, kind.destination_registers());
+        let reads = sources_ab
+            .iter()
+            .chain(&accumulator)
+            .chain(&scales)
+            .copied()
+            .chain([s(126)])
+            .collect();
+        self.ins(0, 8, reads, destinations.clone());
+        self.b.amd_event(
+            0,
+            ProgramPoint(8),
+            AmdEventKind::WmmaIssue {
+                kind,
+                destinations,
+                sources_ab,
+                accumulator,
+                scales,
+                index: vec![],
+            },
+        );
+    }
+}
+#[test]
+fn wmma3_scale_operands_are_named_by_no_row_so_close_dependencies_stay_unresolved() {
+    use volta_graph_check::amdgpu::wmma_hazards::{WmmaHazardKind, check_wmma_hazards_types};
+    let fp4 = AmdWmmaKind::F8f6f4_16x16x128 {
+        a: AmdSmallFloat::Fp4,
+        b: AmdSmallFloat::Fp4,
+    };
+    let fp6 = AmdWmmaKind::F8f6f4_16x16x128 {
+        a: AmdSmallFloat::Fp6,
+        b: AmdSmallFloat::Fp8,
+    };
+    // An earlier WMMA's D read as a later WMMA's scale: policy below the
+    // earlier type's WMMA count (both FP4: 2, otherwise 4), nothing at it.
+    for (kind, count) in [(fp4, 2), (fp6, 4), (AmdWmmaKind::F4_32x16x128, 4)] {
+        for slots in [count - 1, count] {
+            let mut t = Trace::new(32);
+            t.wmma(0, kind, 64, 0, Some(64));
+            for _ in 0..slots {
+                t.ins(0, 0, vec![], vec![]);
+            }
+            t.wmma_scaled(
+                fp4,
+                160,
+                96,
+                vec![v(64, u32::MAX as u64), v(130, u32::MAX as u64)],
+            );
+            let r = check_wmma_hazards_types(&t.finish());
+            assert!(r.violations.is_empty(), "{kind:?} {slots}: {r:?}");
+            let scale = r
+                .policy
+                .iter()
+                .any(|f| f.kind == WmmaHazardKind::ScaleSourceBelowPolicy);
+            assert_eq!(scale, slots < count, "{kind:?} {slots}: {r:?}");
+            assert_eq!(
+                r.verdict(),
+                if slots < count {
+                    Verdict::Unknown
+                } else {
+                    Verdict::Pass
+                }
+            );
+        }
+    }
+    // A VALU overwriting an earlier scaled WMMA's scale register: policy below
+    // the VALU count (both FP4: 1); a VALU touching it is never a slot.
+    for slots in [0, 1] {
+        let mut t = Trace::new(32);
+        t.wmma_scaled(
+            fp4,
+            64,
+            0,
+            vec![v(130, u32::MAX as u64), v(131, u32::MAX as u64)],
+        );
+        for _ in 0..slots {
+            t.ins(0, 0, vec![], vec![]);
+        }
+        t.ins(0, 0, vec![], vec![v(131, 1)]);
+        let r = check_wmma_hazards_types(&t.finish());
+        assert!(r.violations.is_empty(), "{slots}: {r:?}");
+        assert_eq!(
+            r.policy
+                .iter()
+                .any(|f| f.kind == WmmaHazardKind::ScaleSourceBelowPolicy),
+            slots == 0,
+            "{slots}: {r:?}"
+        );
+    }
+    // The documented rows still certify: a D read as A one slot short.
+    let mut t = Trace::new(32);
+    t.wmma_scaled(
+        fp6,
+        64,
+        0,
+        vec![v(130, u32::MAX as u64), v(131, u32::MAX as u64)],
+    );
+    for _ in 0..3 {
+        t.ins(0, 0, vec![], vec![]);
+    }
+    t.wmma(0, fp4, 160, 64, Some(160));
+    let r = check_wmma_hazards_types(&t.finish());
+    assert!(
+        r.violations
+            .iter()
+            .any(|f| f.kind == WmmaHazardKind::MatrixABReadBeforeReady && f.required == 4),
+        "{r:?}"
+    );
 }

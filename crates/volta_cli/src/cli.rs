@@ -4,7 +4,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use crate::commands::{AnalyzeArgs, CompareArgs, ExtractLeanArgs, SolveArgs, VerifyArgs, VizArgs};
+use crate::commands::{
+    AnalyzeArgs, CheckProgramArgs, CompareArgs, ExtractLeanArgs, SolveArgs, VerifyArgs, VizArgs,
+};
 
 /// Log level for controlling output verbosity
 #[cfg(feature = "logging")]
@@ -103,6 +105,11 @@ pub(crate) enum Commands {
     /// Build the event-graph viewer: one self-contained HTML page over a store of recorded runs
     /// (`just viz` records every volta_pipeline test into one, then builds the page)
     Viz(VizArgs),
+
+    /// Check one gfx1250 kernel under the B0 profile its request names and write the
+    /// matching JSON report. Exit status equals the report class: 0 PASS, 1 REJECT,
+    /// 2 UNKNOWN_UNSUPPORTED, 3 ERROR, 4 TIMEOUT.
+    CheckProgram(CheckProgramArgs),
 }
 
 #[derive(Subcommand)]

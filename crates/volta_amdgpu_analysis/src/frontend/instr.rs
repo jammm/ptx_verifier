@@ -767,13 +767,30 @@ fn parse_modifier(token: &str, opcode: Opcode, mnemonic: &str) -> Result<Modifie
         "gds" => opcode == Opcode::Lds,
         "clamp" | "mul" | "div" | "op_sel" | "op_sel_hi" | "neg_lo" | "neg_hi" => alu,
         "cbsz" | "abid" | "blgp" => opcode == Opcode::Matrix,
+        // gfx1250 F8F6F4 formats, and block-scale lanes, formats and reuse
+        // hints of the 4-dword scaled forms (LLVM syntax).
+        "matrix_a_fmt" | "matrix_b_fmt" => {
+            opcode == Opcode::Matrix
+                && mnemonic.starts_with("v_wmma_")
+                && mnemonic.ends_with("_f8f6f4")
+        }
+        "matrix_a_scale" | "matrix_b_scale" | "matrix_a_scale_fmt" | "matrix_b_scale_fmt"
+        | "matrix_a_reuse" | "matrix_b_reuse" => {
+            opcode == Opcode::Matrix
+                && (mnemonic.starts_with("v_wmma_scale_")
+                    || mnemonic.starts_with("v_wmma_scale16_"))
+        }
         "bitop3" => matches!(mnemonic, "v_bitop3_b32" | "v_bitop2_b32" | "v_bitop3_b16"),
         "scale_offset" => matches!(opcode, Opcode::ScalarMemory | Opcode::VectorMemory),
         "byte_sel" => matches!(
             mnemonic.trim_end_matches("_e64"),
             "v_cvt_f32_fp8" | "v_cvt_f32_bf8"
         ),
-        "scope" => mnemonic == "global_atomic_add_f32" || mnemonic.starts_with("flat_"),
+        "scope" => {
+            mnemonic == "global_atomic_add_f32"
+                || mnemonic.starts_with("flat_")
+                || mnemonic == "global_prefetch_b8"
+        }
         "dst_sel" | "dst_unused" | "src0_sel" | "src1_sel" => mnemonic.ends_with("_sdwa"),
         _ => false,
     };
@@ -797,6 +814,18 @@ fn parse_modifier(token: &str, opcode: Opcode, mnemonic: &str) -> Result<Modifie
         return Err(format!("modifier `{name}` requires an integer"));
     }
     if name == "scope"
+        && mnemonic == "global_prefetch_b8"
+        && !matches!(
+            value,
+            Some("SCOPE_CU" | "SCOPE_SE" | "SCOPE_DEV" | "SCOPE_SYS")
+        )
+    {
+        return Err(
+            "GLOBAL prefetch scope must be SCOPE_CU, SCOPE_SE, SCOPE_DEV or SCOPE_SYS".into(),
+        );
+    }
+    if name == "scope"
+        && mnemonic != "global_prefetch_b8"
         && value
             != Some(if mnemonic.starts_with("flat_") {
                 "SCOPE_SYS"
@@ -837,6 +866,25 @@ fn parse_modifier(token: &str, opcode: Opcode, mnemonic: &str) -> Result<Modifie
             return Err(format!("invalid bit list for `{name}`"));
         }
     }
+    let allowed_values: &[&str] = match name {
+        "matrix_a_fmt" | "matrix_b_fmt" => &[
+            "MATRIX_FMT_FP8",
+            "MATRIX_FMT_BF8",
+            "MATRIX_FMT_FP6",
+            "MATRIX_FMT_BF6",
+            "MATRIX_FMT_FP4",
+        ],
+        "matrix_a_scale" | "matrix_b_scale" => &["MATRIX_SCALE_ROW0", "MATRIX_SCALE_ROW1"],
+        "matrix_a_scale_fmt" | "matrix_b_scale_fmt" => &[
+            "MATRIX_SCALE_FMT_E8",
+            "MATRIX_SCALE_FMT_E5M3",
+            "MATRIX_SCALE_FMT_E4M3",
+        ],
+        _ => &[],
+    };
+    if !allowed_values.is_empty() && !value.is_some_and(|value| allowed_values.contains(&value)) {
+        return Err(format!("invalid value for `{name}` in `{token}`"));
+    }
     if matches!(name, "dst_sel" | "src0_sel" | "src1_sel")
         && !value.is_some_and(|value| {
             [
@@ -865,6 +913,12 @@ fn parse_modifier(token: &str, opcode: Opcode, mnemonic: &str) -> Result<Modifie
                 | "dst_unused"
                 | "src0_sel"
                 | "src1_sel"
+                | "matrix_a_fmt"
+                | "matrix_b_fmt"
+                | "matrix_a_scale"
+                | "matrix_b_scale"
+                | "matrix_a_scale_fmt"
+                | "matrix_b_scale_fmt"
         )
         && value.is_some()
     {
@@ -889,7 +943,7 @@ pub(super) fn parse_instruction(
     let fail = |message| ParseError { message, span };
     let (mnemonic, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
     if architecture == crate::target::Architecture::Gfx1250 {
-        super::gfx1250::validate_encoding(mnemonic).map_err(&fail)?;
+        super::gfx1250::validate_encoding(mnemonic).map_err(fail)?;
     }
     let (opcode, mut minimum, mut maximum) = signature(mnemonic)
         .or_else(|| {
@@ -903,8 +957,8 @@ pub(super) fn parse_instruction(
     }
     let mut operands = Vec::new();
     let mut modifiers = Vec::new();
-    for group in split_top_level(rest, ',').map_err(&fail)? {
-        for token in whitespace_tokens(group).map_err(&fail)? {
+    for group in split_top_level(rest, ',').map_err(fail)? {
+        for token in whitespace_tokens(group).map_err(fail)? {
             if let Some(inner) = token
                 .strip_prefix("sext(")
                 .and_then(|s| s.strip_suffix(')'))
@@ -913,7 +967,7 @@ pub(super) fn parse_instruction(
                 {
                     return Err(fail("unsupported source sign-extension form".into()));
                 }
-                let value = operand(inner, architecture).map_err(&fail)?;
+                let value = operand(inner, architecture).map_err(fail)?;
                 if !matches!(&value, Operand::Register(register) if register.class == RegisterClass::Vector && register.count == 1)
                 {
                     return Err(fail("SDWA sign extension requires one VGPR".into()));
@@ -969,8 +1023,13 @@ pub(super) fn parse_instruction(
                 "scale_offset",
             ]
             .contains(&token)
+                // gfx1250 block-scaled WMMA reuse hints (refused later by
+                // every profile; other mnemonics keep their parse errors).
+                || (matches!(token, "matrix_a_reuse" | "matrix_b_reuse")
+                    && (mnemonic.starts_with("v_wmma_scale_")
+                        || mnemonic.starts_with("v_wmma_scale16_")))
             {
-                let modifier = parse_modifier(token, opcode, mnemonic).map_err(&fail)?;
+                let modifier = parse_modifier(token, opcode, mnemonic).map_err(fail)?;
                 if modifiers
                     .iter()
                     .any(|old: &Modifier| old.name == modifier.name)
@@ -982,7 +1041,7 @@ pub(super) fn parse_instruction(
                 if !modifiers.is_empty() {
                     return Err(fail("operand after instruction modifier".into()));
                 }
-                operands.push(operand(token, architecture).map_err(&fail)?);
+                operands.push(operand(token, architecture).map_err(fail)?);
             }
         }
     }
@@ -1089,8 +1148,8 @@ fn validate_post_parse(
             "s_waitcnt requires counters or one 16-bit immediate".into(),
         ));
     }
-    validate_registers(mnemonic, opcode, operands, modifiers, architecture).map_err(&fail)?;
-    validate_cdna_integer16(mnemonic, operands, modifiers, architecture).map_err(&fail)?;
+    validate_registers(mnemonic, opcode, operands, modifiers, architecture).map_err(fail)?;
+    validate_cdna_integer16(mnemonic, operands, modifiers, architecture).map_err(fail)?;
     if modifiers.iter().any(|m| {
         if architecture == crate::target::Architecture::Gfx1250 {
             matches!(
@@ -1106,7 +1165,7 @@ fn validate_post_parse(
                 .into(),
         ));
     }
-    validate_vop_literal_positions(mnemonic, operands, modifiers, architecture).map_err(&fail)?;
+    validate_vop_literal_positions(mnemonic, operands, modifiers, architecture).map_err(fail)?;
     if mnemonic == "v_ashrrev_i64_e32" {
         return Err(fail("v_ashrrev_i64 has only a VOP3 encoding".into()));
     }
@@ -1130,7 +1189,10 @@ fn validate_post_parse(
             "v_bitop3_b32 requires one explicit truth table and unmodified bit operands".into(),
         ));
     }
-    if opcode == Opcode::Matrix && mnemonic.ends_with("f8f6f4") {
+    // MFMA F8F6F4 (cbsz/blgp formats); the gfx1250 WMMA F8F6F4 forms carry
+    // their formats in `matrix_{a,b}_fmt` (checked with their registers).
+    if opcode == Opcode::Matrix && mnemonic.ends_with("f8f6f4") && !mnemonic.starts_with("v_wmma_")
+    {
         for (operand_index, modifier_name) in [(1, "cbsz"), (2, "blgp")] {
             let format = modifiers
                 .iter()
@@ -1535,6 +1597,32 @@ pub(super) fn validate_registers(
                 _ => return Err("unsupported gfx1250 barrier operand; shader IDs are -1 or 0..16, with M0 only on init/join/signal".into()),
             }
         }
+        // gfx1250 MODE writes have no SGPR destination: SETREG writes the
+        // hwreg field named by its first operand, ROUND/DENORM_MODE take a
+        // 16-bit immediate. Their shapes are fixed by the gfx1250 parser.
+        Opcode::ScalarAlu
+            if architecture == crate::target::Architecture::Gfx1250
+                && matches!(
+                    stem,
+                    "s_setreg_b32" | "s_setreg_imm32_b32" | "s_round_mode" | "s_denorm_mode"
+                ) =>
+        {
+            let shape = match (stem, operands) {
+                ("s_setreg_b32", [Operand::HardwareRegister { .. }, source]) => {
+                    register(source).is_some_and(|r| r.class == Scalar && r.count == 1)
+                }
+                ("s_setreg_imm32_b32", [Operand::HardwareRegister { .. }, Operand::Integer(_)]) => {
+                    true
+                }
+                ("s_round_mode" | "s_denorm_mode", [Operand::Integer(value)]) => {
+                    (0..=0xffff).contains(value)
+                }
+                _ => false,
+            };
+            if !shape || !modifiers.is_empty() {
+                return Err(format!("invalid operands for `{mnemonic}`"));
+            }
+        }
         Opcode::ScalarAlu => {
             // SOPK has a dedicated immediate field, not a general scalar
             // source. LLVM's s16imm accepts signed values or their u16 bits;
@@ -1723,16 +1811,46 @@ pub(super) fn validate_registers(
                 require(1, &[Scalar], 4)?;
                 return Ok(());
             }
-            if stem == "global_load_async_to_lds_b128" {
-                // VDST supplies an LDS address, not a four-register result.
-                // Keep the initial profile to the compiler's 64-bit GV form.
+            if stem == "global_prefetch_b8" {
+                // Scalar-base GVS form only: a 32-bit VGPR offset and an SGPR
+                // pair. There is no data operand and no register destination.
                 require(0, &[Vector], 1)?;
-                require(1, &[Vector], 2)?;
-                if modifiers.len() > 1
-                    || !matches!(operands.get(2), Some(Operand::Symbol(off)) if off == "off")
+                require(1, &[Scalar], 2)?;
+                if architecture != crate::target::Architecture::Gfx1250
+                    || modifiers.iter().any(|m| match m.name.as_str() {
+                        "scope" => false,
+                        "offset" => m
+                            .value
+                            .as_deref()
+                            .and_then(integer)
+                            .is_none_or(|offset| !(-8_388_608..=8_388_607).contains(&offset)),
+                        _ => true,
+                    })
+                {
+                    return Err("selected gfx1250 GLOBAL prefetch requires VGPR offset, SGPR pair, signed24 offset and a cache scope".into());
+                }
+                return Ok(());
+            }
+            if stem.starts_with("global_load_async_to_lds_") {
+                // VDST supplies an LDS address, not a register result. B128
+                // keeps the compiler's 64-bit GV form (`off`); B32/B64/B128 also
+                // parse in the scalar-base GVS form, which only the B0 litmus
+                // profile executes.
+                require(0, &[Vector], 1)?;
+                let gv = matches!(operands.get(2), Some(Operand::Symbol(off)) if off == "off");
+                if gv {
+                    require(1, &[Vector], 2)?;
+                } else {
+                    require(1, &[Vector], 1)?;
+                    require(2, &[Scalar], 2)?;
+                }
+                if architecture != crate::target::Architecture::Gfx1250
+                    || mnemonic != stem
+                    || (gv && stem != "global_load_async_to_lds_b128")
+                    || modifiers.len() > 1
                     || modifiers.iter().any(|modifier| modifier.name != "offset")
                 {
-                    return Err("selected async global-to-LDS load requires GV addressing (`off`) and an optional byte offset".into());
+                    return Err("selected async global-to-LDS load requires GV addressing (`off`, B128) or scalar-base GVS addressing and an optional byte offset".into());
                 }
                 if modifiers.iter().any(|modifier| {
                     modifier
@@ -1840,23 +1958,37 @@ pub(super) fn validate_registers(
                 {
                     return Err("selected gfx950 buffer DWORD/DWORDX2 requires plain four-operand VGPR-data/SGPR-quad/zero OFFEN, default policy and unsigned12-bit offset".into());
                 }
-                if matches!(stem, "buffer_load_b128" | "buffer_store_b64") {
-                    // CDNA5 VBUFFER raw OFFEN subset, distinct from CDNA4's
-                    // three-operand buffer->LDS instructions and M0 address.
+                if matches!(
+                    stem,
+                    "buffer_load_b32"
+                        | "buffer_load_b64"
+                        | "buffer_load_b96"
+                        | "buffer_load_b128"
+                        | "buffer_store_b32"
+                        | "buffer_store_b64"
+                        | "buffer_store_b96"
+                        | "buffer_store_b128"
+                ) {
+                    // CDNA5 VBUFFER raw subset, distinct from CDNA4's
+                    // three-operand buffer->LDS instructions and M0 address:
+                    // a VGPR offset with OFFEN, or no VGPR address (`off`).
                     require(0, &[Vector], memory_width(stem))?;
-                    require(1, &[Vector], 1)?;
+                    let no_vaddr = matches!(&operands[1], Operand::Symbol(off) if off == "off");
+                    if !no_vaddr {
+                        require(1, &[Vector], 1)?;
+                    }
+                    let offen = modifiers.iter().any(|m| m.name == "offen");
                     if architecture != crate::target::Architecture::Gfx1250
                         || mnemonic != stem
                         || !matches!(operands[0], Operand::Register(r)
                             if r.class == Vector && u32::from(r.index) + u32::from(r.count) <= 256)
-                        || !matches!(operands[1], Operand::Register(r)
-                            if r.class == Vector && r.count == 1 && r.index < 256)
+                        || !(no_vaddr
+                            || matches!(operands[1], Operand::Register(r)
+                            if r.class == Vector && r.count == 1 && r.index < 256))
                         || !matches!(operands[2], Operand::Register(r) if r.class == Scalar && r.count == 4)
                         || !matches!(operands[3], Operand::Register(r)
                             if r.special == Some(SpecialRegister::Null))
-                        || !modifiers
-                            .iter()
-                            .any(|m| m.name == "offen" && m.value.is_none())
+                        || offen == no_vaddr
                         || modifiers.iter().any(|m| match m.name.as_str() {
                             "offen" => m.value.is_some(),
                             "offset" => m
@@ -1867,7 +1999,7 @@ pub(super) fn validate_registers(
                             _ => true,
                         })
                     {
-                        return Err("selected gfx1250 buffer loadB128/storeB64 requires plain four-operand VGPR/SGPR-quad/null OFFEN, default policy and nonnegative23-bit offset".into());
+                        return Err("selected gfx1250 raw buffer load/store requires plain four-operand VGPR data, VGPR OFFEN or `off`, SGPR quad, null soffset, default policy and nonnegative23-bit offset".into());
                     }
                 }
             }
@@ -1902,9 +2034,99 @@ pub(super) fn validate_registers(
             }
         }
         Opcode::Matrix => {
+            if architecture == crate::target::Architecture::Gfx1250
+                && (stem.ends_with("_f8f6f4") || stem.ends_with("_32x16x128_f4"))
+                && stem.starts_with("v_wmma_")
+            {
+                // F8F6F4: A/B widths from the format modifiers (FP8/BF8 16,
+                // FP6/BF6 12, FP4 8); F4 32x16x128: A 16, B 8, C/D 16. The
+                // scaled forms add two scale operands (one VGPR, or an even
+                // pair for SCALE16; SGPRs and inline constants parse).
+                let format = |name: &str| -> Result<u16, String> {
+                    match modifiers
+                        .iter()
+                        .find(|modifier| modifier.name == name)
+                        .and_then(|modifier| modifier.value.as_deref())
+                    {
+                        None | Some("MATRIX_FMT_FP8" | "MATRIX_FMT_BF8") => Ok(16),
+                        Some("MATRIX_FMT_FP6" | "MATRIX_FMT_BF6") => Ok(12),
+                        Some("MATRIX_FMT_FP4") => Ok(8),
+                        Some(other) => Err(format!("unsupported matrix format `{other}`")),
+                    }
+                };
+                let (d, a, b) = if stem.ends_with("_f4") {
+                    (16, 16, 8)
+                } else {
+                    (8, format("matrix_a_fmt")?, format("matrix_b_fmt")?)
+                };
+                require(0, &[Vector], d)?;
+                require(1, &[Vector], a)?;
+                require(2, &[Vector], b)?;
+                if !matches!(operands.get(3), Some(Operand::Integer(0))) {
+                    require(3, &[Vector], d)?;
+                }
+                let scale = if stem.starts_with("v_wmma_scale16_") {
+                    2
+                } else if stem.starts_with("v_wmma_scale_") {
+                    1
+                } else {
+                    return Ok(());
+                };
+                for index in 4..6 {
+                    match operands.get(index) {
+                        Some(Operand::Integer(_)) => {}
+                        Some(_) if register_at(index).is_some_and(|r| r.class == Scalar) => {
+                            require(index, &[Scalar], 1)?;
+                        }
+                        _ => require(index, &[Vector], scale)?,
+                    }
+                }
+                return Ok(());
+            }
+            if architecture == crate::target::Architecture::Gfx1250 && stem.starts_with("v_swmmac_")
+            {
+                // D (also C), packed A 8, B 16, index 1 (16-bit inputs) or 2.
+                let d = if stem.starts_with("v_swmmac_f16_") || stem.starts_with("v_swmmac_bf16_") {
+                    4
+                } else {
+                    8
+                };
+                require(0, &[Vector], d)?;
+                require(1, &[Vector], 8)?;
+                require(2, &[Vector], 16)?;
+                require(3, &[Vector], if stem.contains("16x16x128") { 2 } else { 1 })?;
+                return Ok(());
+            }
+            if architecture == crate::target::Architecture::Gfx1250
+                && (stem.starts_with("v_wmma_f16_") || stem.starts_with("v_wmma_bf16"))
+            {
+                // 16-bit output: D 4 registers; C 4 (BF16F32: 8 F32).
+                let width = if stem.contains("16x16x128") { 16 } else { 8 };
+                require(0, &[Vector], 4)?;
+                require(1, &[Vector], width)?;
+                require(2, &[Vector], width)?;
+                if !matches!(operands.get(3), Some(Operand::Integer(0))) {
+                    require(
+                        3,
+                        &[Vector],
+                        if stem.starts_with("v_wmma_bf16f32_") {
+                            8
+                        } else {
+                            4
+                        },
+                    )?;
+                }
+                return Ok(());
+            }
             if architecture == crate::target::Architecture::Gfx1250 && stem.starts_with("v_wmma_") {
                 require(0, &[Vector], 8)?;
-                let width = if stem.ends_with("_f32") { 2 } else { 8 };
+                let width = if stem.ends_with("_f32") {
+                    2
+                } else if stem.contains("16x16x128") {
+                    16
+                } else {
+                    8
+                };
                 require(1, &[Vector], width)?;
                 require(2, &[Vector], width)?;
                 if !matches!(operands.get(3), Some(Operand::Integer(0))) {
@@ -2520,7 +2742,14 @@ pub(super) fn validate_for_lowering(
         return super::gfx1250::validate_typed_profile(instruction);
     }
     let (opcode, mut minimum, mut maximum) = match instruction.mnemonic.as_str() {
-        "s_getreg_b32" if architecture == Architecture::Gfx1250 => (Opcode::ScalarAlu, 2, 2),
+        "s_getreg_b32" | "s_setreg_b32" | "s_setreg_imm32_b32"
+            if architecture == Architecture::Gfx1250 =>
+        {
+            (Opcode::ScalarAlu, 2, 2)
+        }
+        "s_round_mode" | "s_denorm_mode" if architecture == Architecture::Gfx1250 => {
+            (Opcode::ScalarAlu, 1, 1)
+        }
         "s_delay_alu" if architecture == Architecture::Gfx1250 => (Opcode::Control, 1, 1),
         name => signature(name)
             .or_else(|| {

@@ -1,0 +1,293 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "ptxv-mw-request/1",
+ "title": "ptx_verifier gfx1250 B0 multiwave pre-execution check request (one kernel: candidate, twin or control)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema",
+  "profile",
+  "enable_pending_ops",
+  "role",
+  "kernel",
+  "source",
+  "object",
+  "launch_file",
+  "backing_allocation",
+  "guards",
+  "outputs"
+ ],
+ "properties": {
+  "schema": {
+   "const": "ptxv-mw-request/1"
+  },
+  "profile": {
+   "const": "gfx1250-b0-mw/1"
+  },
+  "enable_pending_ops": {
+   "type": "array",
+   "items": {
+    "enum": [
+     "s_max_i32",
+     "s_getreg_b32",
+     "s_setreg_b32",
+     "s_setreg_imm32_b32",
+     "s_round_mode",
+     "s_denorm_mode"
+    ]
+   },
+   "uniqueItems": true
+  },
+  "role": {
+   "enum": [
+    "cand",
+    "twin",
+    "control"
+   ]
+  },
+  "kernel": {
+   "const": "kernel"
+  },
+  "source": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "path",
+    "sha256"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "sha256": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "object": {
+   "description": "Audited code object built from the same source by the fuzzer toolchain. Recorded and echoed; the verifier analyzes the source text and checks the source hash only.",
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "sha256"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "sha256": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "launch_file": {
+   "description": "Launch premises of the multiwave profile: one workgroup of W = 2..8 wave32 waves.",
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "block",
+    "grid",
+    "kernel",
+    "arrays",
+    "params",
+    "max_instructions"
+   ],
+   "properties": {
+    "block": {
+     "type": "array",
+     "minItems": 3,
+     "maxItems": 3,
+     "prefixItems": [
+      {
+       "enum": [
+        64,
+        96,
+        128,
+        160,
+        192,
+        224,
+        256
+       ]
+      },
+      {
+       "const": 1
+      },
+      {
+       "const": 1
+      }
+     ]
+    },
+    "grid": {
+     "const": [
+      1,
+      1,
+      1
+     ]
+    },
+    "workgroup_id": {
+     "const": [
+      0,
+      0,
+      0
+     ]
+    },
+    "kernel": {
+     "const": "kernel"
+    },
+    "max_instructions": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 200000
+    },
+    "arrays": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "base",
+       "elem_width",
+       "len",
+       "kind"
+      ],
+      "properties": {
+       "name": {
+        "const": "out"
+       },
+       "base": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]+$"
+       },
+       "elem_width": {
+        "const": 4
+       },
+       "len": {
+        "type": "integer",
+        "minimum": 32,
+        "maximum": 8192
+       },
+       "kind": {
+        "const": "out"
+       }
+      }
+     }
+    },
+    "params": {
+     "const": [
+      {
+       "ptr": "out"
+      }
+     ]
+    }
+   }
+  },
+  "backing_allocation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "base",
+    "bytes"
+   ],
+   "properties": {
+    "base": {
+     "type": "string",
+     "pattern": "^0x[0-9a-f]+$"
+    },
+    "bytes": {
+     "type": "integer",
+     "minimum": 1
+    }
+   }
+  },
+  "guards": {
+   "description": "Forbidden regions inside the backing allocation. Any access is a REJECT witness GUARD_ACCESS.",
+   "type": "array",
+   "minItems": 2,
+   "maxItems": 2,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "base",
+     "bytes",
+     "fill_u32"
+    ],
+    "properties": {
+     "name": {
+      "enum": [
+       "pre",
+       "post"
+      ]
+     },
+     "base": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]+$"
+     },
+     "bytes": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "fill_u32": {
+      "const": "0xffffffff"
+     }
+    }
+   }
+  },
+  "outputs": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "contract",
+    "object",
+    "words",
+    "opaque",
+    "not_written"
+   ],
+   "properties": {
+    "contract": {
+     "const": "raw-u32-mw"
+    },
+    "object": {
+     "const": "out"
+    },
+    "words": {
+     "type": "integer",
+     "minimum": 32,
+     "maximum": 8192
+    },
+    "opaque": {
+     "description": "[first, count] out-word ranges that must hold an opaque evidence value (HW_ID1, shader cycles)",
+     "type": "array",
+     "items": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    "not_written": {
+     "description": "[first, count] out-word ranges that must stay unwritten",
+     "type": "array",
+     "items": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    }
+   }
+  }
+ }
+}

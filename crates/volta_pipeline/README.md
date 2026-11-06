@@ -36,13 +36,16 @@ or deadlock gives `REJECT`. Sampling, unresolved obligations and incomplete
 execution give `UNKNOWN` unless another result establishes rejection.
 
 `SourceKernelVerification` also exposes privately constructed certified-prefix
-findings: opt-in scalar readiness, same-instruction write/write conflicts and
-supported tensor LDS bounds. The pipeline
+findings: opt-in scalar readiness, same-instruction write/write conflicts,
+supported tensor LDS bounds and, under the gfx1250 B0 m1 profile, global
+accesses into a guard or outside every configured object
+(`CertifiedGlobalBounds`). The pipeline
 validates each property against the exact aborted prefix before constructing its
 wrapper. These findings establish rejection only; the ordinary `GraphReport`
 stays incomplete, and no output or equivalence proof is supplied. See
 [early readiness](../../docs/early-readiness.md) and
-[tensor bounds](../../docs/tensor-bounds.md).
+[tensor bounds](../../docs/tensor-bounds.md). `SourceAnalysisParts.raw_outputs`
+carries native raw-u32 output words when that contract is selected.
 
 Graph properties depend on the target. Consumers must use
 `GraphReport::applicable_properties()` or `summaries()` rather than treating

@@ -126,7 +126,7 @@ pub fn validate_tensor_bounds_prefix(
             "tensor bounds requires exactly one valid configured LDS extent",
         ));
     }
-    let footprint = descriptor.decode().map_err(&fail)?.ok_or_else(|| {
+    let footprint = descriptor.decode().map_err(fail)?.ok_or_else(|| {
         fail("a predicate-disabled tensor descriptor cannot violate access bounds")
     })?;
     if footprint.shared_end <= limits[0] {

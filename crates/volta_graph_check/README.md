@@ -326,6 +326,32 @@ cannot inherit gfx942/gfx950 certificates. Extending a graph profile does not
 establish a hardware result. Numerical agreement remains separate from these
 graph obligations.
 
+`s_wait_alu` events are claimed by their instruction and change no counter.
+GLOBAL prefetches join the VMEM replay group: their X lease holds every address
+source, so an overwrite before X retires is a `SourceReuse` hazard; they must
+have exactly one footprint listing the active lanes and no effects. When a
+graph carries a global region layout, every completed GLOBAL effect and every
+prefetch footprint is checked against it (guards for every scope, objects for
+non-speculative scopes). `global_bounds` validates an attempted-access fault
+against the layout and replays the prefix (trace, readiness, reachability)
+before the pipeline certifies a guard, out-of-object or non-speculative
+prefetch rejection with the lowest offending lane.
+The gfx1250 trace check accepts a `ModeAccess` only under the B0 m2 profile,
+right after its own scalar instruction record. `mode_order` reports a MODE read
+followed by any MODE write without an intervening SA_SDST==0 `s_wait_alu` as
+unresolved: that ordering is outside the profile. A `BufferRangeCheck` is accepted only under the B0 litmus profile,
+once per buffer issue and for exactly its active lanes; the check recomputes
+every mask and requires effects for exactly the in-range DWORDs. Under that
+profile, lanes of one range-checked buffer store that write the same bytes are
+ordered by lane (the higher lane's data is written last). Under the B0
+multiwave profile the same order applies to every GLOBAL store, and each wave's
+first non-memory instruction after memory instructions drains XCNT
+(single-group replay). `wmma_hazards` (WMMA and multiwave profiles) checks
+F16/BF16 WMMA spacing in slots: documented WMMA-to-WMMA A/B and WMMA-to-VALU
+dependencies and same-operand back-to-back WMMA fail with witnesses; WMMA
+dependencies outside the published table (D as C, WAW, WAR) below 5 slots are
+unresolved.
+
 Per-lane async GLOBAL/LDS transfers charge ASYNCCNT alone and require an explicit
 `AmdDefaultScheduling` premise. The model snapshots addresses at issue; ordinary
 instruction reads still require ready producers, but later ALU overwrites do not

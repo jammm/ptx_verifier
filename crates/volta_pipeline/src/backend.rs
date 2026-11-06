@@ -3,6 +3,10 @@ use std::collections::BTreeMap;
 
 use volta_expr::SymbolicOutputs;
 use volta_graph::EventGraph;
+use volta_graph_check::amdgpu::global_bounds::{
+    GlobalBoundsCertificate, GlobalBoundsViolation, global_bounds_candidate,
+    validate_global_bounds_prefix,
+};
 use volta_graph_check::amdgpu::tensor_bounds::{
     TensorBoundsCertificate, TensorBoundsViolation, tensor_bounds_candidate,
     validate_tensor_bounds_prefix,
@@ -85,6 +89,8 @@ pub enum KernelModule {
 /// Common owned artifacts. Normalization happens here, never in an analyzer.
 pub struct SourceAnalysisParts {
     pub outputs: Result<SymbolicOutputs, String>,
+    /// Every output word under the native raw-u32 contract, when selected.
+    pub raw_outputs: Option<volta_amdgpu_analysis::RawOutputs>,
     pub graph: EventGraph,
     pub stats: Stats,
     pub op_counts: BTreeMap<&'static str, u64>,
@@ -101,6 +107,9 @@ pub struct SourceKernelVerification {
     pub early_memory_conflict: Option<CertifiedMemoryConflict>,
     /// Independently certified invalid attempted access; outputs remain absent.
     pub tensor_bounds: Option<CertifiedTensorBounds>,
+    /// Independently certified global access outside configured objects or
+    /// into a guard (gfx1250 B0 m1 profile); outputs remain absent.
+    pub global_bounds: Option<CertifiedGlobalBounds>,
 }
 
 /// Checker-validated memory-conflict rejection. Private fields prevent an
@@ -135,6 +144,22 @@ impl CertifiedTensorBounds {
         &self.certificate
     }
     pub fn violation(&self) -> &TensorBoundsViolation {
+        &self.violation
+    }
+}
+
+/// Only this pipeline constructs the wrapper after replaying the exact prefix.
+#[derive(Debug, Clone)]
+pub struct CertifiedGlobalBounds {
+    certificate: GlobalBoundsCertificate,
+    violation: GlobalBoundsViolation,
+}
+
+impl CertifiedGlobalBounds {
+    pub fn certificate(&self) -> &GlobalBoundsCertificate {
+        &self.certificate
+    }
+    pub fn violation(&self) -> &GlobalBoundsViolation {
         &self.violation
     }
 }
@@ -191,11 +216,15 @@ pub fn verify_source_kernel(
     let mut early_memory_conflict = None;
     let analysis = match module {
         KernelModule::Ptx(module) => {
+            if config.native_profile != volta_amdgpu_analysis::NativeProfile::TargetDefault {
+                return Err("native AMD profiles do not apply to PTX".into());
+            }
             let parts = volta_ptx_analysis::analyze(module, kernel, config)
                 .map_err(|error| error.to_string())?
                 .into_parts();
             SourceAnalysisParts {
                 outputs: parts.outputs.map_err(|error| error.to_string()),
+                raw_outputs: None,
                 graph: parts.graph,
                 stats: parts.stats,
                 op_counts: parts.op_counts,
@@ -272,6 +301,7 @@ pub fn verify_source_kernel(
             let parts = result.into_parts();
             SourceAnalysisParts {
                 outputs: parts.outputs.map_err(|error| error.to_string()),
+                raw_outputs: parts.raw_outputs,
                 graph: parts.graph,
                 stats: Stats {
                     instructions: parts.stats.instructions,
@@ -291,12 +321,21 @@ pub fn verify_source_kernel(
                 violation,
             })
     });
+    let global_bounds = global_bounds_candidate(&analysis.graph).and_then(|certificate| {
+        validate_global_bounds_prefix(&analysis.graph, &certificate)
+            .ok()
+            .map(|violation| CertifiedGlobalBounds {
+                certificate,
+                violation,
+            })
+    });
     Ok(SourceKernelVerification {
         analysis,
         graph,
         early_readiness,
         early_memory_conflict,
         tensor_bounds,
+        global_bounds,
     })
 }
 

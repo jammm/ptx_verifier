@@ -153,3 +153,80 @@ fn register_names_and_unified_descriptor_allocation_have_distinct_bounds() {
         }
     }
 }
+
+fn gfx1250_source(directive: &str, metadata: &str) -> String {
+    format!(
+        ".amdgcn_target \"{directive}\"\n.amdhsa_code_object_version 6\n.text\n.p2align 8\n.type k,@function\nk:\ns_endpgm\n.size k, .-k\n.p2alignl 7, 0xbf9f0000\n.fill 96, 4, 0xbf9f0000\n.section .rodata,\"a\",@progbits\n.amdhsa_kernel k\n.amdhsa_wavefront_size32 1\n.end_amdhsa_kernel\n.amdgpu_metadata\n---\namdhsa.version: [1, 2]\namdhsa.target: {metadata}\namdhsa.kernels:\n  - .name: k\n    .symbol: k.kd\n    .kernarg_segment_size: 0\n    .wavefront_size: 32\n...\n.end_amdgpu_metadata\n"
+    )
+}
+
+#[test]
+fn gfx1250_accepts_exactly_the_two_assembler_spellings() {
+    let empty = "amdgcn-amd-amdhsa--gfx1250";
+    let unknown = "amdgcn-amd-amdhsa-unknown-gfx1250";
+    for (directive, metadata) in [
+        (unknown, unknown),
+        (empty, empty),
+        (unknown, empty),
+        (empty, unknown),
+    ] {
+        let module = frontend::parse(&gfx1250_source(directive, metadata)).unwrap();
+        assert_eq!(module.target.as_deref(), Some("gfx1250"));
+        assert_eq!(module.target_directive.as_deref(), Some(directive));
+        assert_eq!(module.metadata_target.as_deref(), Some(metadata));
+        let kernel = &module.kernels[0];
+        assert_eq!(
+            kernel
+                .size_directive
+                .as_ref()
+                .map(|s| s.expression.as_str()),
+            Some(".-k")
+        );
+        let trailing: Vec<_> = kernel
+            .trailing_text_directives
+            .iter()
+            .map(|d| (d.name.as_str(), d.arguments.as_str()))
+            .collect();
+        assert_eq!(
+            trailing,
+            [
+                (".p2alignl", "7, 0xbf9f0000"),
+                (".fill", "96, 4, 0xbf9f0000")
+            ]
+        );
+    }
+    for (directive, metadata) in [
+        ("amdgcn-amd-amdhsa-unknown-gfx1250:xnack+", unknown),
+        ("amdgcn-amd-amdhsa-unknown-gfx950", unknown),
+        ("amdgpu12.50-amd-amdhsa-unknown-gfx1250", unknown),
+        ("amdgcn-amd-amdpal-unknown-gfx1250", unknown),
+        ("amdgcn-amd-amdhsa-none-gfx1250", unknown),
+        (unknown, "amdgcn-amd-amdhsa--gfx950"),
+        (unknown, "amdgcn-amd-amdhsa-unknown-gfx1250:sramecc+"),
+    ] {
+        assert!(
+            frontend::parse(&gfx1250_source(directive, metadata)).is_err(),
+            "{directive} / {metadata}"
+        );
+    }
+    // The unknown-environment spelling is not extended to legacy targets.
+    assert!(
+        frontend::parse(&source("gfx950", "s_endpgm", 0).replace("amdhsa--", "amdhsa-unknown-"))
+            .is_err()
+    );
+}
+
+#[test]
+fn padding_inside_a_sized_body_or_after_a_truncating_size_is_refused() {
+    let unknown = "amdgcn-amd-amdhsa-unknown-gfx1250";
+    let good = gfx1250_source(unknown, unknown);
+    let inside = good.replace(
+        "s_endpgm\n.size k, .-k\n",
+        "s_endpgm\n.fill 1, 4, 0xbf9f0000\n.size k, .-k\n",
+    );
+    assert!(frontend::parse(&inside).is_err());
+    let truncated = good.replace("s_endpgm\n.size k, .-k\n", ".size k, .-k\ns_endpgm\n");
+    assert!(frontend::parse(&truncated).is_err());
+    let missing = good.replace(".size k, .-k\n", "");
+    assert!(frontend::parse(&missing).is_err());
+}

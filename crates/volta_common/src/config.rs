@@ -193,6 +193,227 @@ pub fn validate_shared_allocations(layout: &[SharedAllocation]) -> Result<(), St
     Ok(())
 }
 
+/// Native execution profile. The default keeps each target's existing contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NativeProfile {
+    #[default]
+    TargetDefault,
+    /// gfx1250 B0 m1 integer profile `gfx1250-b0-m1-int/1` with
+    /// dependency profile `gfx1250-b0-sched0-m1/1`: strict-greater S_MAX SCC,
+    /// pre-issue global bounds certificates against declared objects and
+    /// guards. It never changes gfx942/gfx950 or the default gfx1250 contract.
+    Gfx1250B0M1Int,
+    /// gfx1250 B0 m2 profile `gfx1250-b0-m2-mode/1`: everything of
+    /// `Gfx1250B0M1Int` plus runtime MODE state for the FP_ROUND and
+    /// FP_DENORM fields (S_GETREG/S_SETREG/S_SETREG_IMM32 of those fields,
+    /// S_ROUND_MODE, S_DENORM_MODE) with recorded MODE access events.
+    Gfx1250B0M2Mode,
+    /// gfx1250 B0 litmus profile `gfx1250-b0-litmus/1`: the m1 bounds,
+    /// guard and raw-word machinery without the integer-subset semantics, plus
+    /// untyped raw-buffer DWORD range checking, scalar-base async loads to LDS
+    /// below a 64 KiB displacement and launcher-defined initial object words.
+    Gfx1250B0Litmus,
+    /// gfx1250 B0 litmus profile `gfx1250-b0-litmus/2`: everything of
+    /// `Gfx1250B0Litmus` plus two-wave named-barrier JOIN read-back through
+    /// STATE_PRIV, S_WAIT_IDLE and lane-ordered same-address global stores.
+    Gfx1250B0Litmus2,
+    /// gfx1250 B0 WMMA profile `gfx1250-b0-wmma/1`: everything of
+    /// `Gfx1250B0M2Mode` plus BF16 WMMA results reported as exact binary32
+    /// bits only inside the exact-representable regime.
+    Gfx1250B0Wmma,
+    /// gfx1250 B0 multiwave profile `gfx1250-b0-mw/1`: the WMMA profile for
+    /// several waves of the selected workgroup, opaque per-wave evidence reads
+    /// (shader cycles, HW_ID1), single-group XNACK replay draining and
+    /// lane-ordered same-address global stores.
+    Gfx1250B0Multiwave,
+    /// gfx1250 B0 WMMA profile `gfx1250-b0-wmma/2`: everything of
+    /// `Gfx1250B0Wmma` plus F16, IU8 and FP8 (16x16x64, 16x16x128) WMMA with
+    /// exact results in their regimes, per-type spacing, and the two fixed
+    /// EXEC writes of an EXEC=0 spacer (EXEC=0 instructions are never counted
+    /// as WMMA spacing slots).
+    Gfx1250B0Wmma2,
+    /// gfx1250 B0 WMMA profile `gfx1250-b0-wmma/3`: everything of
+    /// `Gfx1250B0Wmma2` plus the BF8 combinations, F8F6F4 and F4 32x16x128
+    /// WMMA and their block-scaled 4-dword forms, evaluated for uniform tiles
+    /// and uniform power-of-two scales only.
+    Gfx1250B0Wmma3,
+    /// gfx1250 B0 WMMA profile `gfx1250-b0-wmma/4`: everything of
+    /// `Gfx1250B0Wmma3` plus the 16-bit-output WMMA forms and SWMMAC (F16
+    /// results certified in an 11-bit regime, BF16 results never).
+    Gfx1250B0Wmma4,
+    /// gfx1250 B0 multiwave profile `gfx1250-b0-mw/2`: `Gfx1250B0Multiwave`
+    /// (2..8 waves of the selected workgroup, opaque evidence reads,
+    /// single-group replay draining, lane-ordered stores) with the WMMA forms
+    /// and rules of `Gfx1250B0Wmma4`, applied per wave.
+    Gfx1250B0Multiwave2,
+    /// gfx1250 B0 multi-workgroup predecessor profile `gfx1250-b0-mwpred/1`:
+    /// the multiwave behaviours with BF16 WMMA for every workgroup of a
+    /// non-communicating grid, plus the opaque SE/XCC id message return.
+    Gfx1250B0MwPred,
+    /// gfx1250 B0 communicating-waves profile `gfx1250-b0-comms/1`: the
+    /// multiwave wrapper behaviours, LDS and GLOBAL producer/consumer
+    /// communication between the waves of each analysed workgroup ordered by
+    /// completion waits and workgroup or named barriers.
+    Gfx1250B0Comms,
+}
+
+impl NativeProfile {
+    /// The B0 integer profiles: m1 and its m2 superset.
+    pub const fn b0_integer(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0M1Int
+                | Self::Gfx1250B0M2Mode
+                | Self::Gfx1250B0Wmma
+                | Self::Gfx1250B0Multiwave
+                | Self::Gfx1250B0Wmma2
+                | Self::Gfx1250B0Wmma3
+                | Self::Gfx1250B0Wmma4
+                | Self::Gfx1250B0Multiwave2
+                | Self::Gfx1250B0MwPred
+                | Self::Gfx1250B0Comms
+        )
+    }
+    /// Profiles with runtime MODE FP_ROUND/FP_DENORM state (m2 and its
+    /// supersets).
+    pub const fn b0_mode_state(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0M2Mode
+                | Self::Gfx1250B0Wmma
+                | Self::Gfx1250B0Multiwave
+                | Self::Gfx1250B0Wmma2
+                | Self::Gfx1250B0Wmma3
+                | Self::Gfx1250B0Wmma4
+                | Self::Gfx1250B0Multiwave2
+                | Self::Gfx1250B0MwPred
+        )
+    }
+    /// Profiles that report BF16 WMMA results as exact bits in the
+    /// exact-representable regime.
+    pub const fn b0_wmma(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0Wmma
+                | Self::Gfx1250B0Multiwave
+                | Self::Gfx1250B0Wmma2
+                | Self::Gfx1250B0Wmma3
+                | Self::Gfx1250B0Wmma4
+                | Self::Gfx1250B0Multiwave2
+                | Self::Gfx1250B0MwPred
+        )
+    }
+    /// The WMMA types beyond BF16 (F16, IU8, FP8) and the EXEC=0 spacer.
+    pub const fn b0_wmma_types(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0Wmma2
+                | Self::Gfx1250B0Wmma3
+                | Self::Gfx1250B0Wmma4
+                | Self::Gfx1250B0Multiwave2
+        )
+    }
+    /// The BF8 combinations, F8F6F4/F4 and block-scaled WMMA (`wmma/3`).
+    pub const fn b0_wmma_scale(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0Wmma3 | Self::Gfx1250B0Wmma4 | Self::Gfx1250B0Multiwave2
+        )
+    }
+    /// The 16-bit-output WMMA forms and SWMMAC (`wmma/4`).
+    pub const fn b0_wmma_sparse16(self) -> bool {
+        matches!(self, Self::Gfx1250B0Wmma4 | Self::Gfx1250B0Multiwave2)
+    }
+    /// The multiwave profiles (`mw/1` and `mw/2`): several waves of the
+    /// selected workgroup with the multiwave wrapper semantics.
+    pub const fn b0_multiwave(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0Multiwave
+                | Self::Gfx1250B0Multiwave2
+                | Self::Gfx1250B0MwPred
+                | Self::Gfx1250B0Comms
+        )
+    }
+    /// The communicating-waves profile (`comms/1`).
+    pub const fn b0_comms(self) -> bool {
+        matches!(self, Self::Gfx1250B0Comms)
+    }
+    /// The multi-workgroup predecessor profile (`mwpred/1`): the SE/XCC id
+    /// message return is an opaque evidence read.
+    pub const fn b0_mwpred(self) -> bool {
+        matches!(self, Self::Gfx1250B0MwPred)
+    }
+    /// The B0 litmus profiles: raw-buffer range checks, async loads to LDS
+    /// and launcher-defined initial object words.
+    pub const fn b0_litmus(self) -> bool {
+        matches!(self, Self::Gfx1250B0Litmus | Self::Gfx1250B0Litmus2)
+    }
+    /// Every B0 profile with declared objects, guards and pre-issue global
+    /// bounds certificates.
+    pub const fn b0_bounded(self) -> bool {
+        matches!(
+            self,
+            Self::Gfx1250B0M1Int
+                | Self::Gfx1250B0M2Mode
+                | Self::Gfx1250B0Litmus
+                | Self::Gfx1250B0Litmus2
+                | Self::Gfx1250B0Wmma
+                | Self::Gfx1250B0Multiwave
+                | Self::Gfx1250B0Wmma2
+                | Self::Gfx1250B0Wmma3
+                | Self::Gfx1250B0Wmma4
+                | Self::Gfx1250B0Multiwave2
+                | Self::Gfx1250B0MwPred
+                | Self::Gfx1250B0Comms
+        )
+    }
+}
+
+/// Exact initial words of one configured array: the caller's launcher writes
+/// them before the kernel runs. Word `i` is `value` (`Fill`) or
+/// `value + i` modulo 2^32 (`Index`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitialPattern {
+    Fill(u32),
+    Index(u32),
+}
+
+impl InitialPattern {
+    pub const fn word(self, index: u64) -> u32 {
+        match self {
+            Self::Fill(value) => value,
+            Self::Index(base) => base.wrapping_add(index as u32),
+        }
+    }
+}
+
+/// The initial words of a named four-byte array (B0 litmus profile only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitialWords {
+    pub array: String,
+    pub pattern: InitialPattern,
+}
+
+/// How output arrays are observed after a completed execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputContract {
+    /// Mathematical expressions; raw untyped bits are refused.
+    #[default]
+    Mathematical,
+    /// Every four-byte output word as its exact stored bits or a typed refusal.
+    RawU32,
+}
+
+/// A forbidden global byte range: any access to it is a bounds violation even
+/// though it may lie inside the caller's backing allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuardRegion {
+    pub name: String,
+    pub base: u64,
+    pub bytes: u64,
+}
+
 /// Full configuration for analyzing one kernel.
 #[derive(Debug, Clone)]
 pub struct AnalysisConfig {
@@ -222,6 +443,13 @@ pub struct AnalysisConfig {
     pub shared_allocations: Vec<SharedAllocation>,
     /// Abort analysis after this many executed instructions
     pub max_instructions: u64,
+    /// Native profile; anything other than the default requires gfx1250.
+    pub native_profile: NativeProfile,
+    /// Forbidden global regions; only the gfx1250 B0 m1 profile accepts them.
+    pub guard_regions: Vec<GuardRegion>,
+    pub output_contract: OutputContract,
+    /// Exact initial array words; only the gfx1250 B0 litmus profile accepts them.
+    pub initial_words: Vec<InitialWords>,
 }
 
 impl AnalysisConfig {
@@ -238,6 +466,10 @@ impl AnalysisConfig {
             dynamic_shared_bytes: 0,
             shared_allocations: Vec::new(),
             max_instructions: 2_000_000_000,
+            native_profile: NativeProfile::TargetDefault,
+            guard_regions: Vec::new(),
+            output_contract: OutputContract::Mathematical,
+            initial_words: Vec::new(),
         }
     }
 
@@ -331,6 +563,7 @@ impl AnalysisConfig {
                 }
             }
         }
+        self.validate_native_profile()?;
         let mut sym_names = std::collections::BTreeSet::new();
         for (i, value) in self.params.iter().enumerate() {
             if matches!(value, ParamValue::Bytes(bytes) if bytes.is_empty()) {
@@ -367,6 +600,85 @@ impl AnalysisConfig {
                          constrain the check to inputs where both parameters are equal)",
                         name
                     ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl AnalysisConfig {
+    /// Guards and the raw-word contract belong to the explicit m1 profile.
+    /// Guards are disjoint from each other and from every configured array.
+    fn validate_native_profile(&self) -> Result<(), String> {
+        if self.native_profile == NativeProfile::TargetDefault {
+            if !self.guard_regions.is_empty() {
+                return Err("guard regions require the gfx1250 B0 m1 profile".into());
+            }
+            if self.output_contract != OutputContract::Mathematical {
+                return Err(
+                    "the raw-u32 output contract requires the gfx1250 B0 m1 profile".into(),
+                );
+            }
+        }
+        if !self.initial_words.is_empty() {
+            if !self.native_profile.b0_litmus() {
+                return Err("initial array words require the gfx1250 B0 litmus profile".into());
+            }
+            for (i, init) in self.initial_words.iter().enumerate() {
+                let array = self
+                    .array(&init.array)
+                    .ok_or_else(|| format!("initial words name unknown array '{}'", init.array))?;
+                if array.elem_width != 4 || array.kind.is_input() {
+                    return Err(format!(
+                        "initial words require a four-byte non-input array, not '{}'",
+                        init.array
+                    ));
+                }
+                if self.initial_words[..i]
+                    .iter()
+                    .any(|old| old.array == init.array)
+                {
+                    return Err(format!("duplicate initial words for '{}'", init.array));
+                }
+            }
+        }
+        if self.native_profile == NativeProfile::TargetDefault {
+            return Ok(());
+        }
+        if self.output_contract == OutputContract::RawU32
+            && self
+                .arrays
+                .iter()
+                .any(|array| array.kind.is_output() && array.elem_width != 4)
+        {
+            return Err("the raw-u32 output contract requires four-byte output elements".into());
+        }
+        let mut ranges = Vec::new();
+        for guard in &self.guard_regions {
+            if guard.name.is_empty() {
+                return Err("guard region name is empty".into());
+            }
+            let end = guard
+                .base
+                .checked_add(guard.bytes)
+                .ok_or_else(|| format!("guard region '{}' overflows", guard.name))?;
+            ranges.push((guard.base, end, guard.name.as_str()));
+        }
+        for array in &self.arrays {
+            ranges.push((
+                array.base,
+                array.base + array.size_bytes(),
+                array.name.as_str(),
+            ));
+        }
+        for (i, a) in ranges.iter().enumerate() {
+            for b in &ranges[i + 1..] {
+                if a.2 == b.2 {
+                    return Err(format!("guard/array name '{}' is not unique", a.2));
+                }
+                if a.0 < b.1 && b.0 < a.1 {
+                    return Err(format!("regions '{}' and '{}' overlap", a.2, b.2));
                 }
             }
         }

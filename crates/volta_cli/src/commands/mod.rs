@@ -1,6 +1,7 @@
 //! Command-specific arguments and handlers.
 
 mod analyze;
+mod check_program;
 mod compare;
 mod kernel;
 mod parse;
@@ -8,6 +9,7 @@ mod verify;
 mod viz;
 
 pub(crate) use analyze::{AnalyzeArgs, cmd_analyze};
+pub(crate) use check_program::{CheckProgramArgs, cmd_check_program};
 pub(crate) use compare::{CompareArgs, cmd_compare};
 pub(crate) use kernel::{ExtractLeanArgs, SolveArgs, cmd_extract_lean, cmd_solve};
 pub(crate) use parse::cmd_parse;

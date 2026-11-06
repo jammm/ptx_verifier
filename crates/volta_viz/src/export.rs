@@ -815,8 +815,16 @@ fn describe(graph: &EventGraph, arena: &ExprArena, id: EventId) -> (&'static str
                     destinations,
                     sources_ab,
                     accumulator,
+                    scales,
+                    index,
                 } => {
                     info.push(("matrix form", format!("{kind:?}")));
+                    if !scales.is_empty() {
+                        info.push(("block scales", format!("{scales:?}")));
+                    }
+                    if !index.is_empty() {
+                        info.push(("sparsity index", format!("{index:?}")));
+                    }
                     info.push(("destinations", format!("{destinations:?}")));
                     info.push(("A/B sources", format!("{sources_ab:?}")));
                     info.push(("accumulator", format!("{accumulator:?}")));
@@ -939,6 +947,72 @@ fn describe(graph: &EventGraph, arena: &ExprArena, id: EventId) -> (&'static str
                     info.push(("A/B sources", format!("{sources_ab:?}")));
                     info.push(("accumulator", format!("{accumulator:?}")));
                     ("issue", format!("wave {} MFMA {kind:?}", record.wave))
+                }
+                volta_graph::AmdEventKind::PrefetchFootprint {
+                    issue,
+                    scope,
+                    lanes,
+                } => {
+                    info.push(("issue", format!("{issue:?}")));
+                    info.push(("scope", scope.name().into()));
+                    info.push(("lanes", lanes.len().to_string()));
+                    ("instruction", "prefetch address footprint (no data)".into())
+                }
+                volta_graph::AmdEventKind::GlobalAccessFault {
+                    access,
+                    bytes_per_lane,
+                    lanes,
+                } => {
+                    info.push(("access", format!("{access:?}")));
+                    info.push(("bytes per lane", bytes_per_lane.to_string()));
+                    info.push(("lanes", format!("{lanes:x?}")));
+                    (
+                        "instruction",
+                        "attempted global access outside objects; aborted before issue".into(),
+                    )
+                }
+                volta_graph::AmdEventKind::ModeAccess {
+                    op,
+                    offset,
+                    width,
+                    value,
+                } => {
+                    info.push(("bits", format!("MODE[{}:{offset}]", offset + width - 1)));
+                    info.push(("value", format!("{value:#x}")));
+                    (
+                        "instruction",
+                        format!(
+                            "{} {}",
+                            op.name(),
+                            if op.writes() {
+                                "writes MODE"
+                            } else {
+                                "reads MODE"
+                            }
+                        ),
+                    )
+                }
+                volta_graph::AmdEventKind::BufferRangeCheck { issue, check } => {
+                    info.push(("issue", issue.0.to_string()));
+                    info.push(("num_records", check.num_records.to_string()));
+                    info.push(("stride", check.stride.to_string()));
+                    info.push(("OOB_SELECT", u8::from(check.oob_select).to_string()));
+                    let suppressed = check
+                        .lanes
+                        .iter()
+                        .map(|l| check.dwords - l.in_range.count_ones() as u8)
+                        .map(u64::from)
+                        .sum::<u64>();
+                    (
+                        "instruction",
+                        format!(
+                            "buffer range check: {suppressed} out-of-range DWORDs (loads read zero, stores dropped)"
+                        ),
+                    )
+                }
+                volta_graph::AmdEventKind::AluWait { wait } => {
+                    info.push(("encoded", format!("{:#06x}", wait.encoded)));
+                    ("wait", "s_wait_alu (ALU dependency counters only)".into())
                 }
                 volta_graph::AmdEventKind::Delay { cycles } => {
                     info.push(("independent wait states", cycles.to_string()));

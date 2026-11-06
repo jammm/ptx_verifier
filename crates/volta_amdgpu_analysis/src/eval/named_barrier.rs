@@ -126,6 +126,11 @@ impl Interpreter<'_> {
                 );
             }
             "s_barrier_join" => {
+                if (self.litmus_barrier_profile() || self.config.native_profile.b0_comms())
+                    && self.unconsumed_completion(wave)
+                {
+                    return Err(EvalError::Unsupported { pc: wave.pc, what: "litmus profile: JOIN while the joined named barrier has a completion this wave has not waited on (completion report order not documented)".into() });
+                }
                 self.builder.amd_event(
                     wave.id,
                     pc,
@@ -277,6 +282,82 @@ impl Interpreter<'_> {
         }
         Ok(false)
     }
+    /// The wave's joined named barrier completed a phase the wave has not
+    /// waited on (or was reinitialized since the join).
+    fn unconsumed_completion(&self, wave: &Wave) -> bool {
+        wave.named_join.is_some_and(|joined| {
+            joined.object.id != 0
+                && self
+                    .named
+                    .objects
+                    .get(&joined.object.id)
+                    .is_none_or(|object| {
+                        object.incarnation != joined.object.incarnation
+                            || object.phase > joined.phase
+                    })
+        })
+    }
+
+    /// litmus/2: `s_getreg_b32 sD, hwreg(HW_REG_WAVE_STATE_PRIV)` directly
+    /// after `s_wait_idle`. Only NAMED_BARRIER_ID (8:4) and a clear
+    /// NAMED_BARRIER_COMPLETE (3) are defined. Returns false for every other
+    /// instruction or profile.
+    pub(super) fn state_priv_instruction(
+        &mut self,
+        wave: &mut Wave,
+        instruction: &Instruction,
+        name: &str,
+    ) -> Result<bool, EvalError> {
+        const DEFINED: u32 = 0x1f8;
+        if !self.litmus_barrier_profile() || name != "s_getreg_b32" {
+            return Ok(false);
+        }
+        let operands = instruction.operands();
+        let [
+            Operand::Register(destination),
+            Operand::HardwareRegister {
+                name: register,
+                offset: 0,
+                width: 32,
+            },
+        ] = operands
+        else {
+            return Ok(false);
+        };
+        if register != "HW_REG_WAVE_STATE_PRIV" || destination.count != 1 {
+            return Ok(false);
+        }
+        let refuse = |what: &str| EvalError::Unsupported {
+            pc: wave.pc,
+            what: format!("litmus profile: {what}"),
+        };
+        if !instruction.modifiers().is_empty() {
+            return Err(refuse("STATE_PRIV read with modifiers"));
+        }
+        let idle = wave
+            .previous_pc
+            .and_then(|pc| self.program.instructions.get(pc))
+            .is_some_and(|previous| previous.mnemonic() == "s_wait_idle");
+        if !idle {
+            return Err(refuse(
+                "STATE_PRIV read not directly after s_wait_idle (documented wait-idle requirement)",
+            ));
+        }
+        let Some(joined) = wave.named_join else {
+            return Err(refuse(
+                "STATE_PRIV read before any named JOIN (initial named barrier state not pinned)",
+            ));
+        };
+        if self.unconsumed_completion(wave) {
+            return Err(refuse(
+                "STATE_PRIV read while the joined named barrier has an unconsumed completion",
+            ));
+        }
+        let bits = u32::from(joined.object.id) << 4;
+        wave.put_value(&operands[0], 0, Value::partial_bits(bits, DEFINED))?;
+        Ok(true)
+    }
+
     pub(super) fn release_named_barriers(&mut self) -> bool {
         let mut progress = false;
         for wave in &mut self.waves {

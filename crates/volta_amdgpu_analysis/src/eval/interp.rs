@@ -7,7 +7,11 @@ use crate::{
     config::{AnalysisConfig, ArrayKind, ParamValue},
     ir::*,
 };
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 use volta_expr::{ExprArena, ExprId, ExprNode};
 use volta_graph::*;
 
@@ -15,10 +19,15 @@ use volta_graph::*;
 mod async_lds;
 #[path = "interp_buffer_lds.rs"]
 mod buffer_lds;
+#[path = "interp_litmus.rs"]
+mod litmus;
+#[path = "interp_m1.rs"]
+mod m1;
 #[path = "named_barrier.rs"]
 mod named_barrier;
 #[path = "interp_private.rs"]
 mod private;
+pub use m1::{RawOutputs, RawWord, RawWordRefusal};
 
 mod control;
 mod dependencies;
@@ -85,6 +94,12 @@ pub enum EvalError {
         pc: usize,
         what: &'static str,
     },
+    /// Attempted global footprint outside configured objects or in a guard.
+    GlobalBounds {
+        wave: u32,
+        pc: usize,
+        what: &'static str,
+    },
 }
 impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -104,7 +119,7 @@ impl fmt::Display for EvalError {
                 "analysis instruction budget {limit} exhausted (inconclusive)"
             ),
             Self::ObserverStopped => f.write_str(OBSERVER_STOP_REASON),
-            Self::TensorBounds { what, .. } => f.write_str(what),
+            Self::TensorBounds { what, .. } | Self::GlobalBounds { what, .. } => f.write_str(what),
         }
     }
 }
@@ -131,6 +146,8 @@ type ExtractedOutputs = Vec<(String, Vec<(u64, ExprId)>)>;
 pub(crate) struct RunArtifacts {
     pub arena: ExprArena,
     pub outputs: Result<ExtractedOutputs, OutputsUnavailable>,
+    /// Present only under the raw-u32 contract after a completed execution.
+    pub raw_outputs: Option<RawOutputs>,
     pub graph: EventGraph,
     pub stats: Stats,
     pub op_counts: BTreeMap<&'static str, u64>,
@@ -162,6 +179,10 @@ struct Wave {
     m0_defined: bool,
     named_join: Option<named_barrier::Joined>,
     named_wait: Option<named_barrier::Joined>,
+    // Program points of the instruction being executed and the one this wave
+    // executed before it (litmus/2 STATE_PRIV wait-idle rule).
+    current_pc: Option<usize>,
+    previous_pc: Option<usize>,
     scalar: Vec<Option<Value>>,
     temporary: [Option<Value>; 16],
     vector: BTreeMap<(u16, u8), Value>,
@@ -195,6 +216,8 @@ impl Wave {
             m0_defined: false,
             named_join: None,
             named_wait: None,
+            current_pc: None,
+            previous_pc: None,
             scalar: vec![None; 128],
             temporary: [None; 16],
             vector: BTreeMap::new(),
@@ -617,6 +640,12 @@ pub(crate) struct Interpreter<'a> {
     module_globals: BTreeMap<String, GlobalAllocation>,
     named: named_barrier::State,
     private: private::State,
+    /// gfx1250 B0 m2 profile: MODE FP_ROUND (index 0) and FP_DENORM (index 1)
+    /// per wave; `None` is an undefined field.
+    mode_fields: BTreeMap<u32, [Option<u8>; 2]>,
+    /// gfx1250 B0 multiwave profile: fresh symbols of opaque per-wave
+    /// evidence reads (shader cycles, HW_ID1); stored words report OPAQUE.
+    opaque_symbols: BTreeSet<ExprId>,
 }
 #[derive(Debug, Clone, Copy)]
 struct GlobalAllocation {
@@ -895,6 +924,8 @@ impl<'a> Interpreter<'a> {
             module_globals,
             named: named_barrier::State::default(),
             private: private::State::new(program, architecture)?,
+            mode_fields: BTreeMap::new(),
+            opaque_symbols: BTreeSet::new(),
         };
         result
             .builder
@@ -904,6 +935,7 @@ impl<'a> Interpreter<'a> {
                 .builder
                 .assume(Assumption::FixedPrivateAllocation(bytes));
         }
+        result.configure_native_profile()?;
         if architecture == AmdArchitecture::Gfx1250
             || architecture == AmdArchitecture::Gfx950
                 && program.instructions.iter().any(|instruction| {
@@ -1286,9 +1318,14 @@ impl<'a> Interpreter<'a> {
     }
     pub fn execute(mut self, observer: Option<&mut InstructionObserver<'_>>) -> RunArtifacts {
         let end = self.run(observer);
+        let mut raw_outputs = None;
         let (terminal, outputs) = match end {
             Ok(()) => {
-                let outputs = self.extract().map_err(OutputsUnavailable::Extraction);
+                raw_outputs = self.extract_raw();
+                let outputs = match &raw_outputs {
+                    Some(raw) => Ok(self.exact_raw_outputs(raw)),
+                    None => self.extract().map_err(OutputsUnavailable::Extraction),
+                };
                 (Terminal::Completed, outputs)
             }
             Err(EvalError::Invalid { ref what, .. })
@@ -1346,7 +1383,8 @@ impl<'a> Interpreter<'a> {
                 };
                 let (thread, pc) = match &error {
                     EvalError::Invalid { wave, pc, .. }
-                    | EvalError::TensorBounds { wave, pc, .. } => (
+                    | EvalError::TensorBounds { wave, pc, .. }
+                    | EvalError::GlobalBounds { wave, pc, .. } => (
                         Some(ThreadIx(wave * self.architecture.wave_size())),
                         Some(ProgramPoint(*pc as u32)),
                     ),
@@ -1367,6 +1405,7 @@ impl<'a> Interpreter<'a> {
         RunArtifacts {
             arena: self.arena,
             outputs,
+            raw_outputs,
             graph: self.builder.finish(terminal),
             stats: self.stats,
             op_counts: self.op_counts,
@@ -1557,6 +1596,7 @@ impl<'a> Interpreter<'a> {
             .get(wave.pc)
             .ok_or_else(|| wave.fail(None, "fell off kernel without s_endpgm"))?;
         let instruction = instruction.clone();
+        wave.previous_pc = wave.current_pc.replace(wave.pc);
         if self.architecture == AmdArchitecture::Gfx950
             && matches!(
                 instruction.alu_operation(),
@@ -1925,5 +1965,270 @@ fn selectors(
                 .collect();
             values.filter(|values| values.len() == count)
         }
+    }
+}
+
+/// A gfx1250-b0-wmma/3 WMMA form: graph kind (F8F6F4 kinds are completed from
+/// the format modifiers), fixed A/B formats of the non-F8F6F4 forms, K and the
+/// block-scale size (32 or 16 values per scale) of the scaled forms.
+#[derive(Debug, Clone, Copy)]
+struct SmallWmma {
+    kind: AmdWmmaKind,
+    a: AmdSmallFloat,
+    b: AmdSmallFloat,
+    f8f6f4: bool,
+    k: usize,
+    scale: Option<u8>,
+}
+
+impl SmallWmma {
+    fn of(operation: MatrixOpcode) -> Option<Self> {
+        use AmdSmallFloat::{Bf8, Fp4, Fp8};
+        use MatrixOpcode as M;
+        let fixed = |kind, a, b, k| SmallWmma {
+            kind,
+            a,
+            b,
+            f8f6f4: false,
+            k,
+            scale: None,
+        };
+        let f8f6f4 = |scale| SmallWmma {
+            kind: AmdWmmaKind::F8f6f4_16x16x128 { a: Fp8, b: Fp8 },
+            a: Fp8,
+            b: Fp8,
+            f8f6f4: true,
+            k: 128,
+            scale,
+        };
+        let f4 = |scale| SmallWmma {
+            kind: AmdWmmaKind::F4_32x16x128,
+            a: Fp4,
+            b: Fp4,
+            f8f6f4: false,
+            k: 128,
+            scale,
+        };
+        Some(match operation {
+            M::VWmmaF3216x16x64Fp8Bf8 => fixed(AmdWmmaKind::Fp8Bf8_16x16x64, Fp8, Bf8, 64),
+            M::VWmmaF3216x16x64Bf8Fp8 => fixed(AmdWmmaKind::Bf8Fp8_16x16x64, Bf8, Fp8, 64),
+            M::VWmmaF3216x16x64Bf8Bf8 => fixed(AmdWmmaKind::Bf8Bf8_16x16x64, Bf8, Bf8, 64),
+            M::VWmmaF3216x16x128Fp8Bf8 => fixed(AmdWmmaKind::Fp8Bf8_16x16x128, Fp8, Bf8, 128),
+            M::VWmmaF3216x16x128Bf8Fp8 => fixed(AmdWmmaKind::Bf8Fp8_16x16x128, Bf8, Fp8, 128),
+            M::VWmmaF3216x16x128Bf8Bf8 => fixed(AmdWmmaKind::Bf8Bf8_16x16x128, Bf8, Bf8, 128),
+            M::VWmmaF3216x16x128F8f6f4 => f8f6f4(None),
+            M::VWmmaScaleF3216x16x128F8f6f4 => f8f6f4(Some(32)),
+            M::VWmmaScale16F3216x16x128F8f6f4 => f8f6f4(Some(16)),
+            M::VWmmaF3232x16x128F4 => f4(None),
+            M::VWmmaScaleF3232x16x128F4 => f4(Some(32)),
+            M::VWmmaScale16F3232x16x128F4 => f4(Some(16)),
+            _ => return None,
+        })
+    }
+}
+
+/// Block-scale formats of the scaled WMMA forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SmallScale {
+    /// Exponent only, bias 127, 0xFF NaN.
+    E8m0,
+    /// Unsigned, 5-bit exponent (bias 15), 3-bit mantissa, 0xFF NaN.
+    E5m3,
+    /// 7 bits: 4-bit exponent (bias 7), 3-bit mantissa, 0x7F NaN.
+    E4m3,
+}
+
+/// 32 copies of a 6-bit code packed contiguously (K = 0 in bits [5:0])
+/// over six 32-bit words.
+fn pack6(code: u32) -> [u32; 6] {
+    let mut words = [0u32; 6];
+    for position in 0..192u32 {
+        if code >> (position % 6) & 1 != 0 {
+            words[(position / 32) as usize] |= 1 << (position % 32);
+        }
+    }
+    words
+}
+
+/// Value of a small-float code and whether it is normal or zero in its own
+/// format; `None` for NaN or Inf.
+fn small_float(format: AmdSmallFloat, code: u32) -> Option<(f64, bool)> {
+    let (exponent_bits, mantissa_bits, bias) = match format {
+        AmdSmallFloat::Fp8 => (4, 3, 7),
+        AmdSmallFloat::Bf8 => (5, 2, 15),
+        AmdSmallFloat::Fp6 => (2, 3, 1),
+        AmdSmallFloat::Bf6 => (3, 2, 3),
+        AmdSmallFloat::Fp4 => (2, 1, 1),
+    };
+    let mantissa = code & ((1 << mantissa_bits) - 1);
+    let exponent = (code >> mantissa_bits) & ((1 << exponent_bits) - 1);
+    let negative = code & (1 << (exponent_bits + mantissa_bits)) != 0;
+    match format {
+        AmdSmallFloat::Fp8 if exponent == 15 && mantissa == 7 => return None,
+        AmdSmallFloat::Bf8 if exponent == 31 => return None,
+        _ => {}
+    }
+    let fraction = f64::from(mantissa) / f64::from(1u32 << mantissa_bits);
+    let (magnitude, normal) = if exponent == 0 {
+        (fraction * 2f64.powi(1 - bias), mantissa == 0)
+    } else {
+        ((1.0 + fraction) * 2f64.powi(exponent as i32 - bias), true)
+    };
+    Some((if negative { -magnitude } else { magnitude }, normal))
+}
+
+/// Value of a block-scale byte and whether it is a normal power of two;
+/// `None` for NaN and for an E4M3 byte with bit 7 set (not evaluated).
+fn small_scale(format: SmallScale, byte: u32) -> Option<(f64, bool)> {
+    match format {
+        SmallScale::E8m0 => (byte != 0xff).then(|| (2f64.powi(byte as i32 - 127), true)),
+        SmallScale::E5m3 | SmallScale::E4m3 => {
+            let (bits, bias) = if format == SmallScale::E5m3 {
+                (5, 15)
+            } else {
+                (4, 7)
+            };
+            if byte >> (bits + 3) != 0 || byte == (1 << (bits + 3)) - 1 {
+                return None;
+            }
+            let (exponent, mantissa) = (byte >> 3, byte & 7);
+            let fraction = f64::from(mantissa) / 8.0;
+            Some(if exponent == 0 {
+                (fraction * 2f64.powi(1 - bias), false)
+            } else {
+                (
+                    (1.0 + fraction) * 2f64.powi(exponent as i32 - bias),
+                    mantissa == 0,
+                )
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod small_wmma_tests {
+    use super::*;
+
+    #[test]
+    fn six_bit_packing_and_decoding() {
+        assert_eq!(&pack6(0x18)[..3], &[0x1861_8618, 0x8618_6186, 0x6186_1861]);
+        assert_eq!(&pack6(0x0c)[3..], &[0x0c30_c30c, 0xc30c_30c3, 0x30c3_0c30]);
+        assert_eq!(small_float(AmdSmallFloat::Fp6, 0x18), Some((4.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Bf6, 0x18), Some((8.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Bf6, 0x0c), Some((1.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Fp4, 0x2), Some((1.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Fp4, 0x1), Some((0.5, false)));
+        assert_eq!(small_float(AmdSmallFloat::Fp4, 0xf), Some((-6.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Bf8, 0x3c), Some((1.0, true)));
+        assert_eq!(small_float(AmdSmallFloat::Bf8, 0x7c), None);
+        assert_eq!(small_float(AmdSmallFloat::Fp8, 0x7f), None);
+        assert_eq!(small_float(AmdSmallFloat::Fp8, 0x3c), Some((1.5, true)));
+    }
+
+    #[test]
+    fn scale_decoding() {
+        assert_eq!(small_scale(SmallScale::E8m0, 0x7f), Some((1.0, true)));
+        assert_eq!(small_scale(SmallScale::E8m0, 0xff), None);
+        assert_eq!(small_scale(SmallScale::E5m3, 0x78), Some((1.0, true)));
+        assert_eq!(small_scale(SmallScale::E5m3, 0x80), Some((2.0, true)));
+        assert_eq!(small_scale(SmallScale::E5m3, 0x79), Some((1.125, false)));
+        assert_eq!(small_scale(SmallScale::E5m3, 0xff), None);
+        assert_eq!(small_scale(SmallScale::E4m3, 0x38), Some((1.0, true)));
+        assert_eq!(small_scale(SmallScale::E4m3, 0x7f), None);
+        assert_eq!(small_scale(SmallScale::E4m3, 0x80), None);
+        assert_eq!(
+            small_scale(SmallScale::E4m3, 0x07),
+            Some((0.875 / 64.0, false))
+        );
+    }
+}
+
+/// Input element formats of the gfx1250-b0-wmma/4 forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HalfInput {
+    F16,
+    Bf16,
+    Iu8,
+    Small(AmdSmallFloat),
+}
+
+/// A gfx1250-b0-wmma/4 form: graph kind, dense or sparse, A/B formats, K
+/// (expanded for SWMMAC) and the result format.
+#[derive(Debug, Clone, Copy)]
+struct HalfSparse {
+    kind: AmdWmmaKind,
+    sparse: bool,
+    a: HalfInput,
+    b: HalfInput,
+    k: usize,
+    output: AmdWmmaOutput,
+}
+
+impl HalfSparse {
+    fn of(operation: MatrixOpcode) -> Option<Self> {
+        use AmdSmallFloat::{Bf8, Fp8};
+        use MatrixOpcode as M;
+        let half = |input, output| HalfSparse {
+            kind: AmdWmmaKind::Half16x16x32 { output },
+            sparse: false,
+            a: input,
+            b: input,
+            k: 32,
+            output,
+        };
+        let f16out = |a, b, k128: bool| HalfSparse {
+            kind: AmdWmmaKind::F16Out8 { a, b, k128 },
+            sparse: false,
+            a: HalfInput::Small(a),
+            b: HalfInput::Small(b),
+            k: if k128 { 128 } else { 64 },
+            output: AmdWmmaOutput::F16,
+        };
+        let sparse = |input: AmdSwmmacInput, output| {
+            let (a, b, k) = match input {
+                AmdSwmmacInput::F16 => (HalfInput::F16, HalfInput::F16, 64),
+                AmdSwmmacInput::Bf16 => (HalfInput::Bf16, HalfInput::Bf16, 64),
+                AmdSwmmacInput::Iu8 => (HalfInput::Iu8, HalfInput::Iu8, 128),
+                AmdSwmmacInput::Small { a, b } => (HalfInput::Small(a), HalfInput::Small(b), 128),
+            };
+            HalfSparse {
+                kind: AmdWmmaKind::Swmmac { input, output },
+                sparse: true,
+                a,
+                b,
+                k,
+                output,
+            }
+        };
+        let small = |a, b| AmdSwmmacInput::Small { a, b };
+        use AmdWmmaOutput as O;
+        Some(match operation {
+            M::VWmmaF1616x16x32F16 => half(HalfInput::F16, O::F16),
+            M::VWmmaBf1616x16x32Bf16 => half(HalfInput::Bf16, O::Bf16),
+            M::VWmmaBf16f3216x16x32Bf16 => half(HalfInput::Bf16, O::Bf16F32),
+            M::VWmmaF1616x16x64Fp8Fp8 => f16out(Fp8, Fp8, false),
+            M::VWmmaF1616x16x64Fp8Bf8 => f16out(Fp8, Bf8, false),
+            M::VWmmaF1616x16x64Bf8Fp8 => f16out(Bf8, Fp8, false),
+            M::VWmmaF1616x16x64Bf8Bf8 => f16out(Bf8, Bf8, false),
+            M::VWmmaF1616x16x128Fp8Fp8 => f16out(Fp8, Fp8, true),
+            M::VWmmaF1616x16x128Fp8Bf8 => f16out(Fp8, Bf8, true),
+            M::VWmmaF1616x16x128Bf8Fp8 => f16out(Bf8, Fp8, true),
+            M::VWmmaF1616x16x128Bf8Bf8 => f16out(Bf8, Bf8, true),
+            M::VSwmmacF3216x16x64F16 => sparse(AmdSwmmacInput::F16, O::F32),
+            M::VSwmmacF3216x16x64Bf16 => sparse(AmdSwmmacInput::Bf16, O::F32),
+            M::VSwmmacF1616x16x64F16 => sparse(AmdSwmmacInput::F16, O::F16),
+            M::VSwmmacBf1616x16x64Bf16 => sparse(AmdSwmmacInput::Bf16, O::Bf16),
+            M::VSwmmacBf16f3216x16x64Bf16 => sparse(AmdSwmmacInput::Bf16, O::Bf16F32),
+            M::VSwmmacF3216x16x128Fp8Fp8 => sparse(small(Fp8, Fp8), O::F32),
+            M::VSwmmacF3216x16x128Fp8Bf8 => sparse(small(Fp8, Bf8), O::F32),
+            M::VSwmmacF3216x16x128Bf8Fp8 => sparse(small(Bf8, Fp8), O::F32),
+            M::VSwmmacF3216x16x128Bf8Bf8 => sparse(small(Bf8, Bf8), O::F32),
+            M::VSwmmacF1616x16x128Fp8Fp8 => sparse(small(Fp8, Fp8), O::F16),
+            M::VSwmmacF1616x16x128Fp8Bf8 => sparse(small(Fp8, Bf8), O::F16),
+            M::VSwmmacF1616x16x128Bf8Fp8 => sparse(small(Bf8, Fp8), O::F16),
+            M::VSwmmacF1616x16x128Bf8Bf8 => sparse(small(Bf8, Bf8), O::F16),
+            M::VSwmmacI3216x16x128Iu8 => sparse(AmdSwmmacInput::Iu8, O::I32),
+            _ => return None,
+        })
     }
 }

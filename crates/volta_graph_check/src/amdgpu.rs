@@ -26,8 +26,11 @@ mod buffer_lds;
 pub mod early_memory_conflicts;
 pub mod early_readiness;
 mod gfx1250;
+pub mod global_bounds;
+pub mod mode_order;
 mod private_memory;
 pub mod tensor_bounds;
+pub mod wmma_hazards;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AmdTraceEvidence {
@@ -101,7 +104,7 @@ pub struct AmdReport {
     pub memory_conflict: MemoryConflictResult,
 }
 
-const CLASSES: usize = 24;
+const CLASSES: usize = 25;
 fn class_index(class: AmdMemoryClass) -> usize {
     // CDNA4 §4.4 orders same-type LDS instructions. §12.12's DS_(B)PERMUTE
     // uses LDS hardware, with no LDS memory footprint. LLVM AMDGPUHWEvents.cpp
@@ -138,6 +141,8 @@ fn class_index(class: AmdMemoryClass) -> usize {
         AmdMemoryClass::ScratchStoreWide => 21,
         AmdMemoryClass::FlatPrivateLoad => 22,
         AmdMemoryClass::FlatPrivateStore => 23,
+        // Prefetches have no data completion or effects to order.
+        AmdMemoryClass::Prefetch => 24,
     }
 }
 fn ordered(class: AmdMemoryClass) -> bool {
@@ -601,7 +606,10 @@ fn trace_contract(
             | AmdEventKind::NamedBarrierWait { .. }
             | AmdEventKind::NamedBarrierRelease { .. }
             | AmdEventKind::NamedBarrierLeave { .. }
-            | AmdEventKind::NamedBarrierSignalWithCount { .. } => unresolved.push(Unresolved::at(
+            | AmdEventKind::NamedBarrierSignalWithCount { .. }
+            | AmdEventKind::AluWait { .. }
+            | AmdEventKind::ModeAccess { .. }
+            | AmdEventKind::BufferRangeCheck { .. } => unresolved.push(Unresolved::at(
                 record.event,
                 "GFX12 event cannot use a legacy CDNA target contract",
             )),
@@ -1700,18 +1708,58 @@ fn memory_conflicts_with_clock(
     // LLVM AMDGPUUsage.md at5fd50ec8, Memory Model GFX125x: explicit
     // SCOPE_SYS forwards both accesses through smaller-scope caches. This
     // supplies visibility only after the existing completion and HB checks.
+    // B0 communicating-waves profile: the selected workgroup's waves share one
+    // workgroup-coherent vector cache, so every GLOBAL effect is published to
+    // the other waves once completion and happens-before hold.
+    let workgroup_coherent = gfx1250
+        && graph
+            .provenance()
+            .assumptions
+            .contains(&volta_graph::Assumption::Gfx1250B0WorkgroupCoherentProfile);
     let scoped: HashSet<EventId> = graph
         .amd_memory_effects()
         .iter()
         .filter(|link| {
             if gfx1250 {
                 link.scope == AmdMemoryScope::Gfx1250System
+                    || (workgroup_coherent
+                        && matches!(graph.event(link.effect).kind, EventKind::Access(a)
+                            if graph.access(a).space == Space::Global))
             } else {
                 single_cu && link.scope == AmdMemoryScope::Workgroup
             }
         })
         .map(|link| link.effect)
         .collect();
+    // B0 litmus profile: lanes of one range-checked buffer store that write
+    // the same bytes are ordered by lane (the higher lane's data overrides
+    // during write combining); the interpreter writes lanes in ascending order.
+    let assumptions = &graph.provenance().assumptions;
+    let lane_ordered_stores: HashSet<usize> = if assumptions
+        .contains(&volta_graph::Assumption::Gfx1250B0MultiwaveProfile)
+        || assumptions.contains(&volta_graph::Assumption::Gfx1250B0LitmusBarrierProfile)
+    {
+        // B0 multiwave and litmus/2 profiles: the same write-combining
+        // order for every vector-memory store of the selected profile.
+        operations
+            .iter()
+            .enumerate()
+            .filter(|(_, operation)| operation.class == AmdMemoryClass::VectorStore)
+            .map(|(index, _)| index)
+            .collect()
+    } else if assumptions.contains(&volta_graph::Assumption::Gfx1250B0LitmusProfile) {
+        graph
+            .amd_events()
+            .iter()
+            .filter_map(|record| match &record.kind {
+                AmdEventKind::BufferRangeCheck { issue, .. } => issue_index.get(issue).copied(),
+                _ => None,
+            })
+            .filter(|&operation| operations[operation].class == AmdMemoryClass::VectorStore)
+            .collect()
+    } else {
+        HashSet::new()
+    };
     let mut written = written_bytes(graph);
     // Native trace validation admits only the selected RMW profile. Keep its
     // writes in this domain without changing PTX's ordinary-only domain M.
@@ -1741,7 +1789,8 @@ fn memory_conflicts_with_clock(
         let mut reaches = |node: &EffectNode, forest: &[EffectNode]| {
             let earlier = &operations[node.operation];
             let atomic_self = node.operation == operation
-                && later.class == AmdMemoryClass::GlobalAtomicAddF32NoReturn;
+                && (later.class == AmdMemoryClass::GlobalAtomicAddF32NoReturn
+                    || lane_ordered_stores.contains(&operation));
             let clock = if arrivals_only {
                 later.arrival_clock.as_ref().unwrap_or(&later.clock)
             } else {

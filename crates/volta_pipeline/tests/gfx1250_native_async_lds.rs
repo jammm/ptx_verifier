@@ -496,13 +496,41 @@ fn inactive_copy_observes_no_address_or_memory_and_unsupported_modes_are_refused
     for bad in [
         "global_load_async_to_lds_b128 v[1:4],v[2:3],off",
         "global_load_async_to_lds_b128 v1,v2,off",
-        "global_load_async_to_lds_b128 v1,v2,s[4:5]",
+        "global_load_async_to_lds_b32 v1,v[2:3],off",
+        "global_load_async_to_lds_b64 v1,v[2:3],s[4:5]",
+        "global_load_async_to_lds_b128 v1,v2,s[4:5] scale_offset",
         "global_load_async_to_lds_b128 v1,v[2:3],off scale_offset",
         "global_load_async_to_lds_b128 v1,v[2:3],off offset:8388608",
         "global_load_async_to_lds_b128 v1,v[2:3],off offset:-8388609",
         "global_load_async_to_lds_b128 v1,v[2:3],off offset:thing",
     ] {
         assert!(frontend::parse(&native(bad)).is_err(), "{bad}");
+    }
+    // The scalar-base GVS forms parse, but only the B0 litmus profile
+    // executes them; the default contract keeps refusing them.
+    for gvs in [
+        "global_load_async_to_lds_b128 v1,v2,s[4:5]",
+        "global_load_async_to_lds_b32 v1,v2,s[4:5]",
+    ] {
+        let gvs =
+            format!("s_mov_b32 s4,0x10000\ns_mov_b32 s5,0\nv_mov_b32 v1,0\nv_mov_b32 v2,0\n{gvs}");
+        let checked = run(&gvs, 1, 4);
+        assert!(
+            !checked
+                .analysis
+                .graph()
+                .amd_events()
+                .iter()
+                .any(|event| matches!(
+                    event.kind,
+                    AmdEventKind::MemoryIssue {
+                        class: AmdMemoryClass::AsyncLoadToLds,
+                        ..
+                    }
+                )),
+            "{gvs}"
+        );
+        assert!(checked.analysis.symbolic_outputs().is_err(), "{gvs}");
     }
     for target in ["gfx942", "gfx950"] {
         assert!(

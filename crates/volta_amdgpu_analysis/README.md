@@ -566,8 +566,11 @@ endpoints and the `SingleCuWorkgroup` premise.
 
 ### gfx1250
 
-Only bare `gfx1250` is accepted; aliases and target feature suffixes are
-rejected. Wave32 uses low-32-bit EXEC/VCC masks and no AGPR namespace.
+Only bare `gfx1250` is accepted, spelled `amdgcn-amd-amdhsa--gfx1250` or
+`amdgcn-amd-amdhsa-unknown-gfx1250` (the clang assembler's form); other
+spellings, aliases and target feature suffixes are rejected. The frontend keeps
+both raw target spellings, each function's closing `.size` and the padding
+directives after it. Wave32 uses low-32-bit EXEC/VCC masks and no AGPR namespace.
 Logical VGPR allocation may reach 1024, but selected named operands are
 v0–v255; higher banked encodings are unsupported. Allocation limits do not
 imply that every instruction can access every register tuple.
@@ -578,7 +581,7 @@ accesses. The selected scalar-base scaled FLAT form is B32. A single-lane,
 no-return, device-scoped `global_atomic_add_f32` is modeled separately;
 returning, multi-lane and general unordered atomic serialization are outside
 that profile. Resolved-global FLAT accesses retain explicit `SCOPE_SYS`.
-Ordinary GLOBAL source forms do not accept that scope modifier in this profile;
+Ordinary GLOBAL loads and stores do not accept a scope modifier in this profile;
 the graph contract also handles appropriately scoped ordinary GLOBAL events.
 The annotation does not apply to scalar, LDS, atomic or tensor effects and does
 not create a completion or synchronization edge.
@@ -602,6 +605,65 @@ with outstanding joins are outside the profile.
 
 The selected `MSG_DEALLOC_VGPRS` epilogue requires zero scratch and an immediately
 following `s_endpgm`; it drains X leases without completing outstanding data.
+
+`s_wait_alu` accepts a raw unsigned16 operand or a `depctr_<field>(n)` list;
+unlisted fields keep LLVM's no-wait encoding `0xff9f`. It records an ALU-only
+wait that completes no memory, kernarg or X count. `global_prefetch_b8 vADDR,
+s[N:N+1]` with an optional signed24 offset and `scope:SCOPE_CU|SE|DEV|SYS`
+issues an X-count lease over its address sources and a one-byte-per-lane
+footprint; it has no data, destination or load count. Temporal-hint modifiers
+are unsupported. In the default profile a CU-scope (non-speculative) prefetch
+outside configured arrays and module globals is unsupported.
+
+The opt-in gfx1250 B0 m1 profile (`NativeProfile::Gfx1250B0M1Int`,
+`m1` module) adds the frozen m1 allowlist, operand forms and source layout
+checks, records the global object and guard layout, checks every GLOBAL
+load/store/prefetch footprint before issue (an attempted access outside the
+objects or into a guard is recorded and aborts for an independent certificate),
+uses strict `>` for `s_max_u32`/`s_max_i32` SCC as measured on hardware (the CDNA5 guide prints `>=`, which the default contract keeps), and,
+with `OutputContract::RawU32`, returns every output word as exact bits or a
+typed refusal (`AnalysisResult::raw_outputs`). It requires gfx1250 and leaves
+the default gfx1250, gfx942 and gfx950 contracts unchanged; see the
+[m1 profile](../../tests/gfx1250/CONTRACT.md#m1-integer-profile).
+
+`NativeProfile::Gfx1250B0M2Mode` (`m1::Profile::M2Mode`) keeps every m1
+behaviour and executes the selected MODE forms: FP_ROUND/FP_DENORM entry values
+from the descriptor, exact `s_getreg_b32` reads and `s_setreg_b32`,
+`s_setreg_imm32_b32`, `s_round_mode`, `s_denorm_mode` writes, each recorded as
+a `ModeAccess` event. Other profiles parse these forms but refuse to execute
+the writes; see the
+[m2 profile](../../tests/gfx1250/CONTRACT.md#m2-mode-profile).
+
+`NativeProfile::Gfx1250B0Litmus` (`m1::Profile::Litmus`, `eval/interp_litmus.rs`)
+keeps the B0 object/guard layout, pre-issue bounds certificates and raw words,
+and executes untyped raw-buffer loads and stores (B32-B128, VGPR OFFEN or
+`off`) with the documented per-DWORD range check, and scalar-base async loads
+to LDS below a 64 KiB displacement. The unclamped footprint of every buffer
+lane must lie in one object before issue; each buffer issue records a
+`BufferRangeCheck`. `AnalysisConfig.initial_words` gives exact launcher words
+of configured arrays. Other profiles parse the new buffer and async forms but
+refuse to execute them; see the
+[litmus profile](../../tests/gfx1250/CONTRACT.md#litmus-profile).
+
+`NativeProfile::Gfx1250B0Litmus2` (`m1::Profile::Litmus2`) is the litmus
+profile plus the named-barrier JOIN read-back (`eval/named_barrier.rs`):
+`s_getreg_b32` of the whole STATE_PRIV register directly after `s_wait_idle`
+yields `Value::PartialBits` with only the joined named barrier id (8:4) and a
+clear completion bit (3) defined, and a JOIN or STATE_PRIV read while the
+joined barrier has a completion the wave has not waited on is refused.
+Assumption `Gfx1250B0LitmusBarrierProfile` orders same-address lanes of one
+global store. `s_wait_idle` (all targets) lowers to `WaitInstruction::Idle`
+and on gfx1250 waits for every memory counter; see
+[litmus/2](../../tests/gfx1250/CONTRACT.md#litmus2-named-barrier-join-read-back).
+
+`NativeProfile::Gfx1250B0Wmma` (`m1::Profile::Wmma`) keeps every m2 behaviour and
+stores a BF16 WMMA result element as exact binary32 bits when it lies in the
+exact-representable regime (`eval/wmma_exact.rs`); other elements stay reals.
+`NativeProfile::Gfx1250B0Multiwave` (`m1::Profile::Multiwave`) adds, for 2..8
+waves, opaque per-wave values from `s_get_shader_cycles_u64` and the
+whole-register HW_ID1 read (stored words report `OPAQUE`), and records the
+single-group replay and lane-ordered store premises for the graph check; see
+the [WMMA and multiwave profiles](../../tests/gfx1250/CONTRACT.md#wmma-and-multiwave-profiles).
 
 ## Tests and source references
 

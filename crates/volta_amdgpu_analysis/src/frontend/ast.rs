@@ -176,6 +176,26 @@ pub struct Kernel {
     pub labels: BTreeMap<String, usize>,
     pub descriptor: KernelDescriptor,
     pub args: Vec<KernelArg>,
+    /// Explicit `.size` that closed this body, if any.
+    pub size_directive: Option<SizeDirective>,
+    /// Text-section alignment or data directives after the closing `.size` and
+    /// before the next function or section. They are retained, never executed.
+    pub trailing_text_directives: Vec<TextDirective>,
+}
+
+/// A function's `.size` directive with its unevaluated extent expression.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SizeDirective {
+    pub expression: String,
+    pub span: SourceSpan,
+}
+
+/// A raw `.p2align`/`.fill`-style directive outside any executable body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextDirective {
+    pub name: String,
+    pub arguments: String,
+    pub span: SourceSpan,
 }
 
 /// A bounded non-entry function. Uncalled compiler helpers may contain forms
@@ -193,6 +213,9 @@ pub struct Function {
 #[derive(Debug, Clone, Default)]
 pub struct Module {
     pub target: Option<String>,
+    /// Exact `.amdgcn_target` and `amdhsa.target` spellings before normalization.
+    pub target_directive: Option<String>,
+    pub metadata_target: Option<String>,
     pub code_object_version: Option<u32>,
     pub metadata_version: Option<Vec<u32>>,
     pub kernels: Vec<Kernel>,

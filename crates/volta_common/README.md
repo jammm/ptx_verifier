@@ -12,6 +12,15 @@ no other Volta crate.
   analyzer rejects forms outside its ABI. Both analyzers re-export the main
   launch types for compatibility; aggregate fields and tensor-map definitions
   are available directly from `volta_common::config` and `volta_common::tensor_map`.
+- **Native profile** (`AnalysisConfig.native_profile`, `guard_regions`,
+  `output_contract`): the default keeps every target's existing contract. The
+  gfx1250 B0 m1 profile alone accepts forbidden guard regions (disjoint
+  from arrays and each other) and the `RawU32` output contract; its
+  m2 MODE superset (`Gfx1250B0M2Mode`) and the litmus profile
+  (`Gfx1250B0Litmus`) accept the same; only the litmus profile accepts
+  `initial_words` (exact launcher-written words of four-byte non-input arrays).
+  The WMMA (`Gfx1250B0Wmma`) and multiwave (`Gfx1250B0Multiwave`) profiles are
+  m2 supersets with the same guard and raw-word rules.
 - **Selected native workgroup** (`AnalysisConfig.workgroup_id`) defaults to
   `(0,0,0)` and must be inside `grid_dim`. AMD analysis executes only this group;
   PTX rejects nonzero selection. Array indices and dispatch dimensions retain

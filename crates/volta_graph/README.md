@@ -343,6 +343,23 @@ dependency roles. Named deadlocks retain
 object, incarnation, phase and actual expected/arrived counts in `BlockedOn`.
 These records describe candidate associations; they do not certify publication.
 
+gfx1250 `AluWait` records an `s_wait_alu` DEPCTR encoding; it names ALU and
+VMEM-source dependency counters only and never completes a memory counter.
+`Prefetch` memory issues charge only X and have no destinations or effects; the
+following `PrefetchFootprint` lists every active lane's byte address and its
+`AmdCacheScope`. Scopes wider than CU are speculative. A profile may record
+`global_region_layout()` (objects and forbidden guards, with the
+`ConfiguredGlobalRegionLayout` premise); `GlobalAccessFault` then records an
+attempted GLOBAL access with every active lane's address before an abort with
+`GLOBAL_BOUNDS_ABORT_REASON`. It has no effects and certifies nothing alone.
+`ModeAccess` (B0 m2 profile and its WMMA/multiwave supersets) records one executed MODE read or write: the
+operation (`AmdModeOp`), bit field and exact value; it follows its instruction
+record and has no register effects.
+`BufferRangeCheck` (B0 litmus profile only) follows the effects of one untyped
+raw-buffer issue: descriptor base, `num_records`, stride, OOB_SELECT, DWORD
+count and every active lane's byte offset and in-range DWORD mask.
+`AmdBufferRangeCheck::expected_in_range` is the documented rule.
+
 Text dumps without native AMD events retain `volta-graph 1`; graphs with AMD events use
 `volta-graph 2` and include their sidecar associations. The text dump is a diagnostic
 format, not an executable replay input. AMD rendezvous deadlocks use

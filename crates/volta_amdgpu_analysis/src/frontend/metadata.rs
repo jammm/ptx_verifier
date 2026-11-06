@@ -80,6 +80,7 @@ pub(super) fn apply_metadata(
     module.metadata_version = Some(version);
     if let Some(target) = get(root, "amdhsa.target") {
         let target = string(target).ok_or_else(|| fail("amdhsa.target must be a string".into()))?;
+        module.metadata_target = Some(target.clone());
         parse::set_target(module, &target, span)?;
     }
     let wave_size = module

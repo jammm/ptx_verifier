@@ -38,7 +38,25 @@ pub fn parse(source: &str) -> Result<Module, ParseError> {
     parse_module(source)
 }
 
+/// Raw instruction lines of one function body, after the structural directive
+/// pass and before instruction parsing. Profiles use this to classify every
+/// mnemonic of an entry, including forms the instruction parser would refuse.
+pub fn function_source_lines(
+    source: &str,
+    name: &str,
+) -> Result<Option<Vec<(String, SourceSpan)>>, ParseError> {
+    let parser = structural_pass(source)?;
+    Ok(parser
+        .bodies
+        .get(name)
+        .map(|body| body.instructions.clone()))
+}
+
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
+    finish_module(structural_pass(source)?)
+}
+
+fn structural_pass(source: &str) -> Result<Parser, ParseError> {
     let mut parser = Parser {
         module: Module {
             source: source.to_owned(),
@@ -70,6 +88,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
         ]),
         constant_definitions: BTreeMap::new(),
         constant_spans: BTreeMap::new(),
+        trailing_owner: None,
     };
     parser.collect_function_declarations(source);
     let mut start = 0;
@@ -130,6 +149,10 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             span: parser.module.globals[index].span,
         });
     }
+    Ok(parser)
+}
+
+fn finish_module(mut parser: Parser) -> Result<Module, ParseError> {
     if parser.metadata_blocks.len() > 1 {
         return Err(ParseError {
             message: "duplicate .amdgpu_metadata".into(),
@@ -317,6 +340,7 @@ struct Parser {
     data_section_kinds: BTreeMap<String, bool>,
     constant_definitions: BTreeMap<String, constant_expr::Expr>,
     constant_spans: BTreeMap<String, SourceSpan>,
+    trailing_owner: Option<usize>,
 }
 
 struct FunctionBody {
@@ -454,6 +478,7 @@ impl Parser {
                         },
                     );
                     self.active = Some(index);
+                    self.trailing_owner = None;
                 }
                 if let Some(index) = self.active {
                     let kernel = &mut self.module.kernels[index];
@@ -555,6 +580,9 @@ impl Parser {
         match name {
             ".amdgcn_target" => {
                 let target = unquote(args);
+                self.module
+                    .target_directive
+                    .get_or_insert_with(|| target.into());
                 set_target(&mut self.module, target, span)?;
             }
             ".amdhsa_code_object_version" => {
@@ -679,7 +707,7 @@ impl Parser {
                 }
             }
             ".type" => {
-                let parts = instr::split_top_level(args, ',').map_err(&fail)?;
+                let parts = instr::split_top_level(args, ',').map_err(fail)?;
                 if parts.len() != 2 || !valid_symbol(parts[0]) {
                     return Err(fail("malformed .type directive".into()));
                 }
@@ -700,16 +728,21 @@ impl Parser {
                 }
             }
             ".size" => {
-                let parts = instr::split_top_level(args, ',').map_err(&fail)?;
+                let parts = instr::split_top_level(args, ',').map_err(fail)?;
                 if parts.len() != 2 || !valid_symbol(parts[0]) || parts[1].is_empty() {
                     return Err(fail("malformed .size directive".into()));
                 }
-                if self
+                if let Some(index) = self
                     .active
-                    .is_some_and(|index| self.module.kernels[index].name == parts[0])
+                    .filter(|index| self.module.kernels[*index].name == parts[0])
                 {
                     self.closed_functions.insert(parts[0].into());
                     self.active = None;
+                    self.module.kernels[index].size_directive = Some(super::SizeDirective {
+                        expression: parts[1].into(),
+                        span,
+                    });
+                    self.trailing_owner = Some(index);
                 }
                 if self.globals.contains(parts[0]) {
                     let index = self
@@ -734,7 +767,7 @@ impl Parser {
                 }
             }
             ".set" | ".equ" | ".equiv" => {
-                let parts = instr::split_top_level(args, ',').map_err(&fail)?;
+                let parts = instr::split_top_level(args, ',').map_err(fail)?;
                 if parts.len() != 2 || !valid_symbol(parts[0]) {
                     return Err(fail("malformed constant definition".into()));
                 }
@@ -750,7 +783,7 @@ impl Parser {
                         parts[0]
                     )));
                 }
-                let expression = constant_expr::parse(parts[1]).map_err(&fail)?;
+                let expression = constant_expr::parse(parts[1]).map_err(fail)?;
                 if let Ok(value) = expression.known_value(&self.module.constants) {
                     self.module.constants.insert(parts[0].into(), value);
                 }
@@ -778,13 +811,14 @@ impl Parser {
             | ".cfi_def_cfa_offset"
             | ".cfi_def_cfa_register" => {}
             ".p2align" | ".p2alignl" | ".balign" | ".align" => {
-                let parts = instr::split_top_level(args, ',').map_err(&fail)?;
+                let parts = instr::split_top_level(args, ',').map_err(fail)?;
                 if parts.is_empty()
                     || parts.len() > 3
                     || parts.iter().any(|part| instr::integer(part).is_none())
                 {
                     return Err(fail(format!("malformed `{name}` alignment")));
                 }
+                self.record_trailing(name, args, span);
                 if !self.text_section {
                     if parts.len() == 3 {
                         return Err(fail(
@@ -826,6 +860,7 @@ impl Parser {
                 if args.is_empty() {
                     return Err(fail(format!("missing data for `{name}`")));
                 }
+                self.record_trailing(name, args, span);
                 if self.data_object.is_some() {
                     self.object_data(name, args, span)?;
                 } else if name == ".asciz" {
@@ -839,7 +874,25 @@ impl Parser {
         Ok(())
     }
 
+    // Directives between a closing `.size` and the next function/section are
+    // retained for callers that account for padding; they never execute.
+    fn record_trailing(&mut self, name: &str, args: &str, span: SourceSpan) {
+        if self.text_section
+            && self.active.is_none()
+            && let Some(index) = self.trailing_owner
+        {
+            self.module.kernels[index]
+                .trailing_text_directives
+                .push(super::TextDirective {
+                    name: name.into(),
+                    arguments: args.into(),
+                    span,
+                });
+        }
+    }
+
     fn finish_section(&mut self, span: SourceSpan) -> Result<(), ParseError> {
+        self.trailing_owner = None;
         if self.data_object.is_some() {
             return Err(ParseError {
                 message: "module object changes section before explicit .size".into(),
@@ -1010,7 +1063,16 @@ pub(super) fn set_target(
     target: &str,
     span: SourceSpan,
 ) -> Result<(), ParseError> {
-    let base = target.strip_prefix("amdgcn-amd-amdhsa--").unwrap_or(target);
+    // The `unknown` vendor-environment spelling is accepted only for gfx1250,
+    // whose assembler emits it; other targets keep the empty-environment form.
+    let base = target
+        .strip_prefix("amdgcn-amd-amdhsa--")
+        .or_else(|| {
+            target
+                .strip_prefix("amdgcn-amd-amdhsa-unknown-")
+                .filter(|rest| rest.split(':').next() == Some("gfx1250"))
+        })
+        .unwrap_or(target);
     let gpu = base.split(':').next().unwrap_or(base);
     if !["gfx942", "gfx950", "gfx1250"].contains(&gpu) {
         return Err(ParseError {

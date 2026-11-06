@@ -155,6 +155,16 @@ impl Interpreter<'_> {
         if operation == AluOperation::SBfeI64 {
             return self.signed_bitfield64(wave, instruction);
         }
+        let name = instruction.mnemonic();
+        if self.evidence_instruction(wave, instruction, name)? {
+            return Ok(());
+        }
+        if self.mode_instruction(wave, instruction, name)? {
+            return Ok(());
+        }
+        if self.state_priv_instruction(wave, instruction, name)? {
+            return Ok(());
+        }
         if operation == AluOperation::SGetregB32 {
             if self.architecture != AmdArchitecture::Gfx1250
                 || !matches!(&instruction.operands()[1],Operand::HardwareRegister{name:register_name,offset:6,width:4} if register_name=="HW_REG_IB_STS2")
@@ -842,6 +852,14 @@ impl Interpreter<'_> {
                     (((u64::from(a) * u64::from(b)) >> 32) as u32, wave.scc)
                 }
                 (IntegerKind::Min, false, IntegerForm::Plain) => (a.min(b), a < b),
+                // The m1-based profiles use the strict comparison measured on
+                // hardware; every other target and profile keeps `>=`.
+                (IntegerKind::Max, false, IntegerForm::Plain) if self.m1_profile() => {
+                    (a.max(b), a > b)
+                }
+                (IntegerKind::Max, true, IntegerForm::Plain) if self.m1_profile() => {
+                    ((a as i32).max(b as i32) as u32, (a as i32) > (b as i32))
+                }
                 (IntegerKind::Max, false, IntegerForm::Plain) => (a.max(b), a >= b),
                 (IntegerKind::Min, true, IntegerForm::Plain) => {
                     ((a as i32).min(b as i32) as u32, (a as i32) < (b as i32))

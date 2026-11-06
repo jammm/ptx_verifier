@@ -1,0 +1,63 @@
+{
+ "backing_allocation": {
+  "base": "0x10000",
+  "bytes": 3968
+ },
+ "enable_pending_ops": [],
+ "guards": [
+  {
+   "base": "0x10000",
+   "bytes": 256,
+   "fill_u32": "0xffffffff",
+   "name": "pre"
+  },
+  {
+   "base": "0x10b80",
+   "bytes": 1024,
+   "fill_u32": "0xffffffff",
+   "name": "post"
+  }
+ ],
+ "kernel": "kernel",
+ "launch_file": {
+  "arrays": [
+   {
+    "base": "0x10100",
+    "elem_width": 4,
+    "kind": "out",
+    "len": 672,
+    "name": "out"
+   }
+  ],
+  "block": [
+   32,
+   1,
+   1
+  ],
+  "grid": [
+   1,
+   1,
+   1
+  ],
+  "kernel": "kernel",
+  "max_instructions": 100000,
+  "params": [
+   {
+    "ptr": "out"
+   }
+  ],
+  "workgroup_id": [
+   0,
+   0,
+   0
+  ]
+ },
+ "outputs": {
+  "contract": "raw-u32",
+  "object": "out",
+  "words": 672
+ },
+ "profile": "gfx1250-b0-wmma/3",
+ "role": "cand",
+ "schema": "ptxv-wmma-request/3"
+}

@@ -6,8 +6,10 @@ mod matrix;
 mod memory;
 mod scalar;
 mod value;
+mod wmma_exact;
 pub use interp::{
-    EvalError, InstructionObserver, OBSERVER_STOP_REASON, OutputsUnavailable, Stats, ThreadId,
+    EvalError, InstructionObserver, OBSERVER_STOP_REASON, OutputsUnavailable, RawOutputs, RawWord,
+    RawWordRefusal, Stats, ThreadId,
 };
 pub(crate) use interp::{Interpreter, RunArtifacts};
 pub(crate) fn interp_kind(opcode: crate::ir::Opcode, mnemonic: &str) -> &'static str {
@@ -21,7 +23,9 @@ pub(crate) fn interp_kind(opcode: crate::ir::Opcode, mnemonic: &str) -> &'static
         Opcode::Branch => "branch",
         Opcode::Wait => "wait",
         Opcode::Barrier => "barrier",
-        Opcode::Matrix if mnemonic.starts_with("v_wmma_") => "WMMA",
+        Opcode::Matrix if mnemonic.starts_with("v_wmma_") || mnemonic.starts_with("v_swmmac_") => {
+            "WMMA"
+        }
         Opcode::Matrix => "MFMA",
         Opcode::Control => "control",
     }

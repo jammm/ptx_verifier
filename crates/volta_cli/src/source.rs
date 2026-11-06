@@ -62,6 +62,7 @@ pub(crate) fn run_kernel(
         graph,
         stats,
         op_counts,
+        ..
     } = verified.analysis;
     Ok((
         KernelRun {

@@ -1,0 +1,97 @@
+{
+  "id": "litmus-b0",
+  "version": 1,
+  "family": "litmus",
+  "target": "gfx1250",
+  "stepping": "B0 (rocminfo ASIC Revision != 0)",
+  "dependency_profile": "gfx1250-b0-sched0-litmus/1",
+  "verifier_profile": "gfx1250-b0-litmus/1",
+  "contract": "tests/gfx1250/CONTRACT.md (litmus profiles)",
+  "templates": [
+    "asynclds",
+    "bufload",
+    "bufstore"
+  ],
+  "regions": {
+    "bufload": {
+      "nr": {
+        "min": 1,
+        "why": "num_records 0 is an unbound resource whose behaviour is not specified"
+      }
+    },
+    "bufstore": {
+      "nr": {
+        "min": 1,
+        "why": "num_records 0 is an unbound resource whose behaviour is not specified"
+      }
+    },
+    "asynclds": {
+      "ioff": {
+        "max": 65535,
+        "why": "instruction offsets >= 64 KiB are outside the profile; an offset that is not a multiple of the width leaves the LDS footprint unaligned, whose address depends on the alignment mode (not a launch premise)",
+        "multiple_of": "width"
+      }
+    }
+  },
+  "template_controls": {
+    "asynclds": [
+      "asynclds_lo"
+    ],
+    "bufload": [
+      "bufload_exact_end",
+      "bufload_inrange"
+    ],
+    "bufstore": [
+      "bufstore_inrange",
+      "bufstore_oob1_stride"
+    ]
+  },
+  "unsupported_templates": {
+    "asyncstore": "visibility of an async store to the wave's own later load is not specified",
+    "barjoin": "two-wave named-barrier JOIN read back through STATE_PRIV; covered by the litmus/2 profile",
+    "bufswz": "data layout depends on the absolute allocation address; outside the profile"
+  },
+  "body_allowed_ops": [
+    "buffer_load_b128",
+    "buffer_load_b32",
+    "buffer_load_b64",
+    "buffer_load_b96",
+    "buffer_store_b128",
+    "buffer_store_b32",
+    "buffer_store_b64",
+    "buffer_store_b96",
+    "ds_load_b32",
+    "ds_store_b32",
+    "global_load_async_to_lds_b128",
+    "global_load_async_to_lds_b32",
+    "global_load_async_to_lds_b64",
+    "global_store_b128",
+    "global_store_b32",
+    "s_add_nc_u64",
+    "s_mov_b32",
+    "s_or_b32",
+    "s_wait_asynccnt",
+    "s_wait_dscnt",
+    "s_wait_loadcnt",
+    "s_wait_storecnt",
+    "v_add_nc_u32",
+    "v_cmp_eq_u32",
+    "v_cndmask_b32",
+    "v_lshl_add_u32",
+    "v_lshlrev_b32",
+    "v_mov_b32",
+    "v_or_b32"
+  ],
+  "pending_ops": [],
+  "wrapper_mnemonics": [
+    "global_prefetch_b8",
+    "s_endpgm",
+    "s_load_b64",
+    "s_mov_b64",
+    "s_wait_kmcnt",
+    "v_nop"
+  ],
+  "control_only_ops": [],
+  "allowlist_canonical": "sha256 of json.dumps({'body','pending','wrapper','control_only'} sorted lists, separators=(',',':'), sort_keys=True)",
+  "allowlist_sha256": "4aacd89bd5fff95332289898b983f6da9ec1163654f51dfdd61c58ffa9efd4e2"
+}

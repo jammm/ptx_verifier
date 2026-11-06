@@ -388,6 +388,8 @@ impl BarrierInstruction {
 /// Wait omission is preserved rather than interpreted as an implicit zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WaitInstruction {
+    /// gfx12 S_WAIT_ALU: ALU dependency counters only, never memory completion.
+    Alu(volta_graph::AmdAluWait),
     Cdna {
         vmcnt: Option<u16>,
         lgkmcnt: Option<u16>,
@@ -401,12 +403,17 @@ pub enum WaitInstruction {
         data: AmdCounter,
         encoded: i64,
     },
+    /// gfx1250 S_WAIT_IDLE: every memory counter (and every ALU dependency
+    /// counter) reaches zero.
+    Idle,
     /// Recognized syntax whose execution semantics remain outside the profile.
     UnsupportedStoreCount,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryKind {
+    /// GLOBAL prefetch: address operands only, no data and no destination.
+    Prefetch,
     ScalarLoad,
     ScalarBufferLoad,
     GlobalLoad,
@@ -514,6 +521,10 @@ impl MemoryInstruction {
     pub fn address(&self) -> MemoryAddress<'_> {
         let o = self.operands();
         match self.kind {
+            MemoryKind::Prefetch => MemoryAddress::Global {
+                vector: &o[0],
+                scalar: &o[1],
+            },
             MemoryKind::ScalarLoad => MemoryAddress::Scalar {
                 base: &o[1],
                 offset: &o[2],
@@ -605,6 +616,14 @@ impl MemoryInstruction {
     }
     fn lower(name: &str, operands: &[frontend::Operand]) -> Result<Self, String> {
         let operation = MemoryOpcode::parse(name).ok_or("unknown lowered memory operation")?;
+        if operation == MemoryOpcode::GlobalPrefetchB8 {
+            return Ok(Self {
+                operation,
+                kind: MemoryKind::Prefetch,
+                shape: TransferShape::PerLaneBytes(1),
+                arguments: Arguments::lower(operands)?,
+            });
+        }
         let kind = if name.starts_with("s_buffer_") {
             MemoryKind::ScalarBufferLoad
         } else if name.starts_with("s_") {
@@ -613,7 +632,7 @@ impl MemoryInstruction {
             MemoryKind::TensorLoadToLds
         } else if name == "tensor_store_from_lds" {
             MemoryKind::TensorStoreFromLds
-        } else if name == "global_load_async_to_lds_b128" {
+        } else if name.starts_with("global_load_async_to_lds_") {
             MemoryKind::AsyncLoadToLds
         } else if name.starts_with("global_atomic_") {
             if operands.len() == 4 {
@@ -688,9 +707,10 @@ impl MemoryInstruction {
                 MemoryKind::TensorLoadToLds | MemoryKind::TensorStoreFromLds
             ) {
                 TransferShape::TensorDescriptor
-            } else if kind == MemoryKind::AsyncLoadToLds {
-                TransferShape::PerLaneBytes(16)
-            } else if kind == MemoryKind::BufferLoadToLds {
+            } else if matches!(
+                kind,
+                MemoryKind::AsyncLoadToLds | MemoryKind::BufferLoadToLds
+            ) {
                 TransferShape::PerLaneBytes(4 * registers_per_part)
             } else {
                 TransferShape::Registers {
@@ -919,7 +939,7 @@ impl Instruction {
             }
             Opcode::Matrix => Operation::Matrix(MatrixInstruction {
                 operation: MatrixOpcode::parse(stem).ok_or("unknown lowered matrix operation")?,
-                family: if stem.starts_with("v_wmma_") {
+                family: if stem.starts_with("v_wmma_") || stem.starts_with("v_swmmac_") {
                     MatrixFamily::Wmma
                 } else {
                     MatrixFamily::Mfma
@@ -1055,6 +1075,10 @@ fn lower_wait(name: &str, operands: &[frontend::Operand]) -> Result<WaitInstruct
             }
         }
         "s_waitcnt_vscnt" => WaitInstruction::UnsupportedStoreCount,
+        "s_wait_idle" if operands.is_empty() => WaitInstruction::Idle,
+        "s_wait_alu" => WaitInstruction::Alu(volta_graph::AmdAluWait {
+            encoded: u16::try_from(immediate()?).map_err(|_| "s_wait_alu requires unsigned16")?,
+        }),
         "s_wait_loadcnt_dscnt" | "s_wait_storecnt_dscnt" => WaitInstruction::Combined {
             data: if name == "s_wait_loadcnt_dscnt" {
                 AmdCounter::Load

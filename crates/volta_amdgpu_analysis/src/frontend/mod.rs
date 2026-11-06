@@ -19,7 +19,7 @@ mod metadata;
 mod parse;
 
 pub use ast::*;
-pub use parse::{ParseError, parse, parse_module};
+pub use parse::{ParseError, function_source_lines, parse, parse_module};
 
 #[cfg(test)]
 mod tests;
@@ -46,4 +46,9 @@ pub(crate) fn normalize_for_lowering(instruction: &mut Instruction) -> Result<()
 /// Descriptor structure and register-allocation constraints shared with parsing.
 pub(crate) fn validate_descriptor_for_lowering(kernel: &Kernel) -> Result<(), ParseError> {
     parse::validate_descriptor(kernel)
+}
+
+/// Assembler integer literal (decimal, hex, octal or binary, optionally signed).
+pub fn integer_literal(text: &str) -> Option<i64> {
+    instr::integer(text)
 }
